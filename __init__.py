@@ -219,7 +219,7 @@ class PapaExportMaterialList(bpy.types.UIList):
         return (os.path.isfile(path) and "/media/" in path) or path.startswith("/pa/") # either it is an absolute path and exists, or it's a relative path (assumes it exists)
 
 class PapaExportProperties:
-    def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list):
+    def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,):
         self.__filepath = filepath
         self.__targetObject = target
         self.__isCSG = isCSG
@@ -228,6 +228,7 @@ class PapaExportProperties:
         self.__materialMap = {}
         for material in materialList:
             self.__materialMap[material.getMaterialName()] = material
+        self.__compressData = compressData
 
     def getFilepath(self) -> str:
         return self.__filepath
@@ -246,11 +247,16 @@ class PapaExportProperties:
     
     def getMaterialForName(self, name: str):
         return self.__materialMap[name]
+    
+    def isCompress(self):
+        return self.__compressData
 
 class ExportPapaUISettings(PropertyGroup):
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"\
         + " shaded faces which are marked sharp as disconnected",default=True)
+    compress: BoolProperty(name="Join Similar Polygons", description="Joins the data of any faces that have the same normals to reduce file size."\
+        + " Does nothing if the face is smooth shaded",default=True)
     isCSG : BoolProperty(name="Export as CSG",description="Exports the selected object as a CSG instead of as a unit. Cannot be used if multiple meshes are selected")
 
     shaderOptions = [
@@ -293,7 +299,10 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         row.prop(properties,"markSharp") # this is so needlessly hard blender why
 
         row = l.row()
-        row.prop(properties,"isCSG") # this is so needlessly hard blender why
+        row.prop(properties,"compress")
+
+        row = l.row()
+        row.prop(properties,"isCSG")
         row.enabled = self.__isCSGCompatible
 
         col = l.column()
@@ -355,7 +364,8 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         self.__updatePaths() # update data to match UI
         self.__correctPaths() 
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
-        prop = PapaExportProperties(self.properties.filepath, self.__objectsList, properties.isCSG,properties.markSharp, shader, ExportPapa.materialList)
+        prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
+            properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):

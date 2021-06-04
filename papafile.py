@@ -198,9 +198,9 @@ class PapaVertex:
         self.__colour=col
         # the UVs are flipped across the Y axis for some reason
         if texcoord1:
-            texcoord1[1] = 1 - texcoord1[1]
+            texcoord1 = [texcoord1[0],1 - texcoord1[1]]
         if texcoord2:
-            texcoord2[1] = 1 - texcoord2[1]
+            texcoord2 = [texcoord2[0],1 - texcoord2[1]]
         self.__texcoord1 = texcoord1
         self.__texcoord2 = texcoord2
 

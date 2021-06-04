@@ -57,12 +57,14 @@ def selectObject(obj):
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
+def vectorToImmutableMapping(vector):
+    return (round(vector[0] * 1000), round(vector[1] * 1000), round(vector[2] * 1000))
+
 def createFaceShadingIslands(mesh, properties):
     # in PA, smooth shading is defined by whether or not two faces share the same vertices
     # we must construct a map that tells us which faces are connected and which are not by assigning each face index to a shading index
     edges = mesh.data.edges
     polygons = mesh.data.polygons
-    vertices = mesh.data.vertices
 
     edgeKeyToIndex = {key:i for i,key in enumerate(mesh.data.edge_keys)}
     edgeKeyToFaces = {}
@@ -76,6 +78,7 @@ def createFaceShadingIslands(mesh, properties):
 
     # maps each face to it's shading group
     faceMap = {}
+    compressionMap = {}
 
     # for each face, perform a search and set all faces that you find to be the same index
     # the search is limited only by smooth shading borders or mark sharp borders
@@ -86,9 +89,21 @@ def createFaceShadingIslands(mesh, properties):
         faceMap[polyIdx] = currentIndex
         seenFaces[polyIdx] = True
 
-        # no smooth shading on this face, we're done
         if polygons[polyIdx].use_smooth == False:
-            currentIndex+=1
+
+            # try to find any face with the same normal vector so we can combine data
+            if properties.isCompress():
+                norm = vectorToImmutableMapping(polygons[polyIdx].normal)
+                mapping = compressionMap.get(norm, -1)
+
+                if mapping == -1:
+                    compressionMap[norm] = currentIndex
+                    currentIndex+=1
+                else:
+                    faceMap[polyIdx] = mapping
+            else:
+                currentIndex+=1
+            
             continue
         
         openList = [polyIdx]
@@ -99,7 +114,9 @@ def createFaceShadingIslands(mesh, properties):
 
             # lookup faces that have this edge
             for edgeKey in currentFace.edge_keys:
-                edgeIndex = edgeKeyToIndex[edgeKey]
+                edgeIndex = edgeKeyToIndex.get(edgeKey,None)
+                if edgeIndex == None:
+                    continue # weirdness where sometimes an edge key doesn't map to a valid edge
                 edge = edges[edgeIndex]
 
                 # Respect the sharp of the model, also PA cannot store smooth shading data and split UVs together. We handle this edge case with the connection map
@@ -138,7 +155,9 @@ def createFaceShadingIslands(mesh, properties):
 
             # lookup faces that have this edge
             for edgeKey in polygons[polyIdx].edge_keys:
-                edgeIndex = edgeKeyToIndex[edgeKey]
+                edgeIndex = edgeKeyToIndex.get(edgeKey,None)
+                if edgeIndex == None:
+                    continue
                 edge = edges[edgeIndex]
 
                 # Only include edges that touch this vertex and respect the sharp of the model
@@ -193,7 +212,6 @@ def createBoneWeightMap(mesh):
             boneWeightMap[x].append( (name, weight) )
     return boneWeightMap
 
-
 def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWeightMap, papaSkeleton:PapaSkeleton, uvMap:dict, vertexData:dict, properties):
     print("Generating Vertex Buffers...")
     polygons = mesh.data.polygons
@@ -204,8 +222,8 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
     shadingBuckets = [] # each shading region gets a unique bucket (doesn't need to be a map because it's sequential)
 
     # Given any vertex and a shading region and face, we need to know what the index in the vertex buffer it maps to is
-    # i.e. vertexMap[vertexIndex][face] = vertexBufferIndex
-    # To accomplish this, we need an intermediate which recognizes the shading regions. This is done by the vertexBuckets list
+    # i.e. vertexFaceMap[vertexIndex][face] = vertexBufferIndex
+    # To accomplish this, we need an intermediate which recognizes the shading regions. This is done by the vertexFaceMap list
 
     for x in range(len(vertices)):
         vertexFaceMap.append({})
@@ -460,14 +478,14 @@ def computeUVData(mesh, properties):
             uvMap[1][poly.index] = shadowMapUV
             for vIdx, loopIdx in zip(poly.vertices, poly.loop_indices):
                 # referencing the data causes weirdness, copy it directly
-                textureMapUV[vIdx] = [uv0[loopIdx].uv[0], uv0[loopIdx].uv[1]]
-                shadowMapUV[vIdx] = [uv1[loopIdx].uv[0], uv1[loopIdx].uv[1]]
+                textureMapUV[vIdx] = (uv0[loopIdx].uv[0], uv0[loopIdx].uv[1])
+                shadowMapUV[vIdx] = (uv1[loopIdx].uv[0], uv1[loopIdx].uv[1])
     else:
         for poly in mesh.data.polygons:
             textureMapUV = {}
             uvMap[0][poly.index] = textureMapUV
             for vIdx, loopIdx in zip(poly.vertices, poly.loop_indices):
-                textureMapUV[vIdx] = [uv0[loopIdx].uv[0], uv0[loopIdx].uv[1]]
+                textureMapUV[vIdx] = (uv0[loopIdx].uv[0], uv0[loopIdx].uv[1])
     
     return uvMap
 
