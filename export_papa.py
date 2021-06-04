@@ -58,7 +58,7 @@ def selectObject(obj):
     bpy.context.view_layer.objects.active = obj
 
 def vectorToImmutableMapping(vector):
-    return (round(vector[0] * 1000), round(vector[1] * 1000), round(vector[2] * 1000))
+    return (round(vector[0] * 100), round(vector[1] * 100), round(vector[2] * 100))
 
 def createFaceShadingIslands(mesh, properties):
     # in PA, smooth shading is defined by whether or not two faces share the same vertices
@@ -78,6 +78,7 @@ def createFaceShadingIslands(mesh, properties):
 
     # maps each face to it's shading group
     faceMap = {}
+    # we can safely combine faces with the same normal even if they're not smooth shaded
     compressionMap = {}
 
     # for each face, perform a search and set all faces that you find to be the same index
@@ -96,6 +97,7 @@ def createFaceShadingIslands(mesh, properties):
                 norm = vectorToImmutableMapping(polygons[polyIdx].normal)
                 mapping = compressionMap.get(norm, -1)
 
+                # not found, add new entry
                 if mapping == -1:
                     compressionMap[norm] = currentIndex
                     currentIndex+=1
@@ -250,13 +252,21 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                 # this region claims to have vertex data for this location,
                 # however, there is also the possibility of UVs not aligning, so now we need to check if UVs align
                 lst = bucket[idx]
-                uv = uvMap[0][poly.index][idx]
+                uv1 = uvMap[0][poly.index][idx]
                 foundVertex = False
-                for x in lst:
-                    if(x[1] == uv): # found a match, select it
-                        vertexFaceMap[idx][poly.index] = x[0]
-                        foundVertex = True
-                        break
+                if properties.isCSG(): # respect shadow map as well
+                    uv2 = uvMap[1][poly.index][idx]
+                    for x in lst:
+                        if(x[1] == uv1 and x[2] == uv2): # found a match, select it
+                            vertexFaceMap[idx][poly.index] = x[0]
+                            foundVertex = True
+                            break
+                else:
+                    for x in lst:
+                        if(x[1] == uv1):
+                            vertexFaceMap[idx][poly.index] = x[0]
+                            foundVertex = True
+                            break
                 if foundVertex:
                     continue
             
@@ -289,6 +299,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
 
                 normal = vertexData[0][poly.index][idx]
                 texCoord1 = uvMap[0][poly.index][idx]
+                texCoord2 = None # required for later
 
                 v = PapaVertex(pos=loc, norm=normal, texcoord1=texCoord1, bones=boneList, weights=weightList)
             vertexIndex = len(vertexList)
@@ -298,7 +309,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
             # register in the bucket
             if not bucket.get(idx,False):
                 bucket[idx] = []
-            bucket[idx].append( (vertexIndex, texCoord1) )
+            bucket[idx].append( (vertexIndex, texCoord1, texCoord2) )
     vertexFormat = 10 if properties.isCSG() else 8
     vBuffer = PapaVertexBuffer(vertexFormat,vertexList)
     print(vBuffer)
