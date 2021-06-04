@@ -460,14 +460,14 @@ def computeUVData(mesh, properties):
             uvMap[1][poly.index] = shadowMapUV
             for vIdx, loopIdx in zip(poly.vertices, poly.loop_indices):
                 # referencing the data causes weirdness, copy it directly
-                textureMapUV[vIdx] = (uv0[loopIdx].uv[0], uv0[loopIdx].uv[1])
-                shadowMapUV[vIdx] = (uv1[loopIdx].uv[0], uv1[loopIdx].uv[1])
+                textureMapUV[vIdx] = [uv0[loopIdx].uv[0], uv0[loopIdx].uv[1]]
+                shadowMapUV[vIdx] = [uv1[loopIdx].uv[0], uv1[loopIdx].uv[1]]
     else:
         for poly in mesh.data.polygons:
             textureMapUV = {}
             uvMap[0][poly.index] = textureMapUV
             for vIdx, loopIdx in zip(poly.vertices, poly.loop_indices):
-                textureMapUV[vIdx] = (uv0[loopIdx].uv[0], uv0[loopIdx].uv[1])
+                textureMapUV[vIdx] = [uv0[loopIdx].uv[0], uv0[loopIdx].uv[1]]
     
     return uvMap
 
@@ -601,14 +601,15 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
         mesh.data.free_tangents()
 
 
-def processBone(editBone, animation):
+def processBone(poseBone, animation):
     # this is an inverted form of processBone in import_papa.
     # The code does all the operations in reverse to turn the blender formatted data back into PA formatted data
-    animBone = animation.getAnimationBone(editBone.name)
+    animBone = animation.getAnimationBone(poseBone.name)
+    bone = poseBone.bone
     
-    if editBone.parent:
-        commonMatrix = editBone.matrix.inverted() @ editBone.parent.matrix
-        _,cr,_ = (editBone.parent.matrix.inverted() @ editBone.matrix).decompose()
+    if bone.parent:
+        commonMatrix = bone.matrix_local.inverted() @ bone.parent.matrix_local
+        _,cr,_ = (bone.parent.matrix_local.inverted() @ bone.matrix_local).decompose()
         locationCorrectionMatrix = cr.to_matrix().to_4x4()
 
         for x in range(animation.getNumFrames()): # both rotation and translation processed here.
@@ -630,7 +631,7 @@ def processBone(editBone, animation):
             l = animBone.getTranslation(x)
             r = animBone.getRotation(x)
 
-            cl, cr, _ = (editBone.matrix @ Matrix.Translation(l) @ r.to_matrix().to_4x4()).decompose()
+            cl, cr, _ = (bone.matrix_local @ Matrix.Translation(l) @ r.to_matrix().to_4x4()).decompose()
             cr = Quaternion((cr[1],cr[2],cr[3],cr[0]))
 
             animBone.setTranslation(x,cl)
@@ -682,8 +683,7 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     papaFile.addAnimation(animation)
 
     # correct the transformations from blender data into PA data
-    bpy.ops.object.mode_set(mode='EDIT')
-    for bone in armature.data.edit_bones:
+    for bone in armature.pose.bones:
         processBone(bone, animation)
 
     # put the header back

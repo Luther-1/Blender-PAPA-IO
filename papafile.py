@@ -196,8 +196,14 @@ class PapaVertex:
         self.__binormal=binorm
         self.__tangent=tan
         self.__colour=col
-        self.__texcoord1=texcoord1
-        self.__texcoord2=texcoord2
+        # the UVs are flipped across the Y axis for some reason
+        if texcoord1:
+            texcoord1[1] = 1 - texcoord1[1]
+        if texcoord2:
+            texcoord2[1] = 1 - texcoord2[1]
+        self.__texcoord1 = texcoord1
+        self.__texcoord2 = texcoord2
+
         self.__boneMap = {}
         for x in range(len(weights)):
             if(weights[x]==0):
@@ -1042,6 +1048,7 @@ class PapaFile:
             srgb = papaTexturesHeader[x][2] & 0b1000_0000 == 0b1000_0000
             width = papaTexturesHeader[x][3]
             height = papaTexturesHeader[x][4]
+            heightZero = height - 1 # 0 based index
             dataSize = papaTexturesHeader[x][5] # unused
             offsetTexture = papaTexturesHeader[x][6]
 
@@ -1083,28 +1090,35 @@ class PapaFile:
             numberOfBytes = numberOfPixels * 4 # (destination, not source)
             texData = []
 
+            # for some reason blender flips this data across the x axis, so we must invert y
             file.seek(offsetTexture)
             if(formatIndex == 1): # RGBA8888
                 texData = struct.unpack('<' + 'B' * numberOfBytes,file.read(numberOfBytes))
-                for i in range(numberOfBytes):
-                    texData[i]/=255
+                for y in range(height):
+                    for x in range(width):
+                        i = x + (heightZero - y) * width 
+                        texData[i]/=255
             elif formatIndex == 2: # RGBX8888
                 texData = struct.unpack('<' + 'B' * numberOfBytes,file.read(numberOfBytes)) # ignore alpha data
-                for i in range(0,numberOfBytes, 4):
-                    texData[i]/=255
-                    texData[i+1]/=255
-                    texData[i+2]/=255
-                    texData[i+3]=1
+                for y in range(height):
+                    for x in range(width):
+                        i = x + (heightZero - y) * width 
+                        texData[i]/=255
+                        texData[i+1]/=255
+                        texData[i+2]/=255
+                        texData[i+3]=1
             elif formatIndex == 3: #BGRA8888
                 texData = struct.unpack('<' + 'B' * numberOfBytes,file.read(numberOfBytes))
-                for i in range(0,numberOfBytes, 4):
-                    t = texData[i]
-                    texData[i] = texData[i+2]
-                    texData[i+2] = t
-                    texData[i]/=255
-                    texData[i+1]/=255
-                    texData[i+2]/=255
-                    texData[i+3]/=255
+                for y in range(height):
+                    for x in range(width):
+                        i = x + (heightZero - y) * width 
+                        t = texData[i]
+                        texData[i] = texData[i+2]
+                        texData[i+2] = t
+                        texData[i]/=255
+                        texData[i+1]/=255
+                        texData[i+2]/=255
+                        texData[i+3]/=255
             elif formatIndex == 4: # DXT1
                 texData = [None] * numberOfBytes
 
@@ -1118,7 +1132,7 @@ class PapaFile:
                             for xx in range(4):
                                 colourIndex = bits & 0b11
                                 if yy + y < height and xx + x < width: # copy our colour data into the array
-                                    idx = (xx + x + (yy + y) * width) * 4
+                                    idx = (xx + x + (heightZero - (yy + y)) * width) * 4
                                     col = colours[colourIndex]
                                     texData[idx] = col[0]
                                     texData[idx+1] = col[1]
@@ -1143,7 +1157,7 @@ class PapaFile:
                             for xx in range(4):
                                 colourIndex = bits & 0b11
                                 if yy + y < height and xx + x < width: # copy our colour data into the array
-                                    idx = (xx+x + (yy+y) * width) * 4
+                                    idx = (xx+x + (heightZero-(yy+y)) * width) * 4
                                     col = colours[colourIndex]
                                     texData[idx] = col[0]
                                     texData[idx+1] = col[1]

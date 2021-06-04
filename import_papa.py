@@ -435,19 +435,19 @@ def shadeSmoothFromData(blenderMesh, currentSet: set, iBuffer: PapaIndexBuffer, 
 def vectorsEqualWithinTolerance(v1, v2, tolerance):
     return abs(v1[0]-v2[0]) < tolerance and abs(v1[1]-v2[1]) < tolerance and abs(v1[2]-v2[2]) < tolerance
 
-def extractTexture(path, append, textureMap):
-    idx = path.rfind('.')
+def extractTexture(filepath, append, textureMap):
+    idx = filepath.rfind('.')
     if(idx==-1):
-        idx = len(path)
-    left = path[:idx]
-    right = path[idx:]
+        idx = len(filepath)
+    left = filepath[:idx]
+    right = filepath[idx:]
 
     target = left + append + right
-    try:
-        textureFile = PapaFile(target)
-        print("Auto imported texture file "+target)
-    except Exception as e:
+    if not path.isfile(target): # couldn't find the texture
         return None
+
+    textureFile = PapaFile(target)
+    print("Auto imported texture file "+target)
 
     if(textureFile.getNumTextures()>0):
         texture = textureFile.getTexture(0) # only import the first
