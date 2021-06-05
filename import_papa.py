@@ -149,9 +149,9 @@ def load_papa(properties, context):
                         applyTexture(blenderMaterial, diffuse, None, material, normal, isUnitShader)
                 elif importedTexture != None: # Auto apply the diffuse, mask, and specular textures
                     blenderMaterial = None
-                    isUnitShader = False
+                    isUnitShader = True
                     
-                    if materialCount == 1: # only one material, use that
+                    if materialCount == 1: # only one material with assigned faces, use that
                         for i in range(mesh.getNumMaterialGroups()):
                             mat = mesh.getMaterialGroup(i)
                             if mat.getNumPrimitives == 0:
@@ -162,9 +162,11 @@ def load_papa(properties, context):
                     else: # Unknown state, just make a new material and override
                         blenderMaterial = bpy.data.materials.new(name=papaFile.getString(model.getNameIndex())+"_Material")
                         blenderMesh.data.materials.append(blenderMaterial)
+                        idx = len(blenderMesh.data.materials) - 1
 
                         for poly in blenderMesh.data.polygons:
-                            poly.material_index = 0
+                            poly.material_index = idx
+                        print("Warning: Unit mesh has multiple materials with faces assigned. This is not known behaviour.")
                     if not isUnitShader:
                         print("Warning: Data implies unit shader but actual shader was CSG shader.")
                     applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)

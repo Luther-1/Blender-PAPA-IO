@@ -294,6 +294,9 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
 
                     for i in range(len(boneWeightMap[idx])):
                         boneData = boneWeightMap[idx][i]
+                        # if the bone is hidden, don't include the data
+                        if not boneData[0] in boneNameToIndex:
+                            continue
                         boneList[i] = boneNameToIndex[boneData[0]]
                         weightList[i] = round(boneData[1] / total * 255)
 
@@ -420,7 +423,7 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
             materials.append(mat)
     return materials
 
-def createSkeleton(papaFile: PapaFile, mesh):
+def createSkeleton(papaFile: PapaFile, mesh, properties):
     lastMode = bpy.context.object.mode
     if not lastMode in ["OBJECT","EDIT","POSE"]:
         lastMode = "OBJECT" # edge case for weight paint shenengans
@@ -440,6 +443,11 @@ def createSkeleton(papaFile: PapaFile, mesh):
     boneList = []
     boneMap = {}
     for bone in armature.data.edit_bones:
+        
+        # ignore hidden bones. Mostly for IK animation
+        if properties.isIgnoreHidden() and bone.hide:
+            continue
+
         mat = bone.matrix
         if bone.parent:
             loc, q, _ = (bone.parent.matrix.inverted() @ mat).decompose()
@@ -456,8 +464,9 @@ def createSkeleton(papaFile: PapaFile, mesh):
     # map parents
     for bone in boneList:
         editBone = armature.data.edit_bones[papaFile.getString(bone.getNameIndex())]
-        if not editBone.parent:
+        if not editBone.parent or (properties.isIgnoreHidden() and editBone.hide):
             continue
+
         parentIndex = boneMap[editBone.parent.name]
         bone.setParentIndex(parentIndex)
 
@@ -580,7 +589,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
 
     vertexData = computeVertexData(mesh, connectionMap, properties) # [normal=0, tangent=1, binormal=2][face][vertex] -> normal direction
 
-    papaSkeleton = createSkeleton(papaFile, mesh)
+    papaSkeleton = createSkeleton(papaFile, mesh, properties)
     # TODO: make this generate an implicit bone
     boneWeightMap = {} if papaSkeleton == None else createBoneWeightMap(mesh) # map each vertex index to a list of tupes (bone_name: str, bone_weight: float)
     skeletonIndex = -1
@@ -691,6 +700,8 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     animationBones = []
     animationBoneMap = {}
     for bone in armature.pose.bones:
+        if properties.isIgnoreHidden() and bone.bone.hide:
+            continue
         b = AnimationBone(papaFile.getStringIndex(bone.name),bone.name,[None] * numFrames, [None] * numFrames)
         animationBones.append(b)
         animationBoneMap[bone] = b
@@ -700,19 +711,29 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     for frame in range(numFrames):
         bpy.context.scene.frame_set(bpy.context.scene.frame_start + frame)
         for bone in armature.pose.bones:
+            if properties.isIgnoreHidden() and bone.bone.hide:
+                continue
             animationBone = animationBoneMap[bone]
-            matrix = armature.convert_space(pose_bone=bone, matrix=bone.matrix, from_space='POSE',to_space='LOCAL') # convert the matrix back into local space for compilation
+
+            if properties.isIgnoreRoot() and not bone.parent:
+                matrix = bone.bone.matrix_local
+            else:    
+                # convert the matrix back into local space for compilation
+                matrix = armature.convert_space(pose_bone=bone, matrix=bone.matrix, from_space='POSE',to_space='LOCAL')
+            
             loc, rot, _ = matrix.decompose()
             animationBone.setTranslation(frame, loc)
             animationBone.setRotation(frame, rot)
 
     # create and put an animation into the file
-    animation = PapaAnimation(-1, numBones,numFrames,animationSpeed,1,animationBones)
+    animation = PapaAnimation(-1, len(animationBones),numFrames,animationSpeed,1,animationBones)
     print(animation)
     papaFile.addAnimation(animation)
 
     # correct the transformations from blender data into PA data
     for bone in armature.pose.bones:
+        if properties.isIgnoreHidden() and bone.bone.hide:
+            continue
         processBone(bone, animation)
 
     # put the header back

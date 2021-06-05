@@ -216,10 +216,11 @@ class PapaExportMaterialList(bpy.types.UIList):
 
     def isPathValid(self, path):
         path = path.replace("\\","/")
-        return (os.path.isfile(path) and "/media/" in path) or path.startswith("/pa/") # either it is an absolute path and exists, or it's a relative path (assumes it exists)
+        return (os.path.isfile(path) and ("/pa/" in path or "/pa_ex1/" in path)) or path.startswith("/pa/") # either it is an absolute path and exists, or it's a relative path (assumes it exists)
 
 class PapaExportProperties:
-    def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,):
+    def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
+                        ignoreRoot:bool, ignoreHidden:bool,):
         self.__filepath = filepath
         self.__targetObject = target
         self.__isCSG = isCSG
@@ -229,6 +230,8 @@ class PapaExportProperties:
         for material in materialList:
             self.__materialMap[material.getMaterialName()] = material
         self.__compressData = compressData
+        self.__ignoreRoot = ignoreRoot
+        self.__ignoreHidden = ignoreHidden
 
     def getFilepath(self) -> str:
         return self.__filepath
@@ -251,6 +254,12 @@ class PapaExportProperties:
     def isCompress(self):
         return self.__compressData
 
+    def isIgnoreRoot(self):
+        return self.__ignoreRoot
+
+    def isIgnoreHidden(self):
+        return self.__ignoreHidden
+
 class ExportPapaUISettings(PropertyGroup):
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"\
@@ -267,6 +276,9 @@ class ExportPapaUISettings(PropertyGroup):
     ]
 
     CSGExportShader: EnumProperty(name="",description="Export shader type",items=shaderOptions)
+
+    ignoreRoot: BoolProperty(name="Ignore Root Movement", description="Any bones with no parent will have all transforms removed",default=True)
+    ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file",default=True)
 
 class ExportPapa(bpy.types.Operator, ExportHelper):
     """Export to PAPA file format (.papa)"""
@@ -295,11 +307,22 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
         properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
 
+        if self.__isAnimation:
+            row = l.row()
+            row.prop(properties,"ignoreRoot")
+
+            row = l.row()
+            row.prop(properties,"ignoreHidden")
+            return
+
         row = l.row()
         row.prop(properties,"markSharp") # this is so needlessly hard blender why
 
         row = l.row()
         row.prop(properties,"compress")
+
+        row = l.row()
+        row.prop(properties,"ignoreHidden")
 
         row = l.row()
         row.prop(properties,"isCSG")
@@ -365,13 +388,15 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         self.__correctPaths() 
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
-            properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress)
+            properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
+            properties.ignoreRoot, properties.ignoreHidden)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
         self.__objectsList = self.getObject()
         self.__isCSGCompatible = False
+        self.__isAnimation = False
         ExportPapa.materialList = [] # holds the backend
         ExportPapa.materialUIList = [] # holds the UI frontend
         ExportPapa.currentInstance = self
@@ -380,6 +405,9 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         collection.clear()
 
         highestShaderLevel = 1
+
+        if len(self.__objectsList) == 1 and self.__objectsList[0].type == "ARMATURE":
+            self.__isAnimation = True
 
         if len(self.__objectsList) == 1 and self.__objectsList[0].type == "MESH":
             self.__isCSGCompatible = True
