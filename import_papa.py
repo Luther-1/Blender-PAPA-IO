@@ -171,39 +171,9 @@ def load_papa(properties, context):
                         print("Warning: Data implies unit shader but actual shader was CSG shader.")
                     applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)
                 # Smooth shading
-                # If two faces are connected, PA will smooth shade them. Before we remove doubles, we need to respect smooth shading info
-                # In blender, the best we can do is guess this, connection data is destroyed when we remove doubles
-                # We can assume the original modelers worked in this same environment, so in theory we will get the same result back
-                vertexMap = {}
-                connectionMap = {}
-
-                # map every vertex to every face that touches it
-                for i in range(iBuffer.getNumIndices()):
-                    vertex = iBuffer.getIndex(i)
-                    face = i // 3
-                    if not vertexMap.get(vertex,False):
-                        vertexMap[vertex] = []
-                    vertexMap[vertex].append(face)
-
-                for i in range(0,iBuffer.getNumIndices(),3):
-                    connectionMap[i//3] = set()
-                
-                # now, using the vertex map we will build a map that maps every face to it's neighbours
-                for i in range(iBuffer.getNumIndices()):
-                    vertex = iBuffer.getIndex(i)
-                    face = i // 3
-                    for connectedFace in vertexMap[vertex]:
-                        if connectedFace != face:
-                            connectionMap[face].add(connectedFace)
-
-                blenderMesh.data.calc_normals() # needed the smooth shade function
-                viewedFaces = set()
-                edgeKeyMap = {key:i for i,key in enumerate(blenderMesh.data.edge_keys)}
-                for face in connectionMap:
-
-                    currentSet = set()
-                    shadeSmoothFindConnections(connectionMap, viewedFaces, currentSet, face)
-                    shadeSmoothFromData(blenderMesh, currentSet, iBuffer, edgeKeyMap)
+                # Every face in PA is smooth shaded, what matters is the vertex normals.
+                # For blender, if the vertex normals from the data do not match the face normal, it should be smooth shaded
+                shadeSmoothFromData(blenderMesh,iBuffer,vBuffer)
                 
 
             # armatures
@@ -372,67 +342,17 @@ def blenderTextureFromMaterial(papaFile: PapaFile, material: PapaMaterial, param
     except Exception as e:
         print("Error finding texture for parameter "+paramName+". Skipping. ("+str(e)+")")
 
-def shadeSmoothFindConnections(map: set, viewed: set, connections: set, startFace: int):
-    openList = [startFace] # Python's stack is small, so we implement this iteratively instead of recursively
-    tempList = []
-
-    while len(openList)!=0:
-
-        for i in range(len(openList)):
-            face = openList[i]
-            if(face in viewed):
-                continue
-            viewed.add(face)
-            connections.add(face)
-
-            if not face in map:
-                continue # has no connections
-            
-            for p in map[face]:
-                tempList.append(p)
-        
-        openList = tempList # swap lists
-        tempList = []
-
-def shadeSmoothFromData(blenderMesh, currentSet: set, iBuffer: PapaIndexBuffer, edgeKeyMap: dict):
-    if(len(currentSet) <= 2): # preliminary check, skip quad-triangulated faces
-        return
-
-    triangulated = False
-    items = list(currentSet)
-
-    ib = iBuffer.getIndex
-    vb = blenderMesh.data.vertices
-    n = vb[ib(items[0] * 3)].normal # we can't use the vertex normals from the file as they are calculated before the mesh is broken apart, so normals may differ
-    triangulated = True
-
+def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVertexBuffer):
+    polygons = blenderMesh.data.polygons
     cmp = vectorsEqualWithinTolerance
-    # determine if it was just a triangulation, or if it was actually connected
-    for face in items:
-        idx = face * 3
-        
-        # 100% unreadable but 100% worth it for the one line
-        if(not cmp(vb[ib(idx)].normal, n, 0.01) or not cmp(vb[ib(idx + 1)].normal, n, 0.01) or not cmp(vb[ib(idx + 2)].normal, n, 0.01)): 
-            triangulated = False
-            break
-
-    # create the edge seams (fix for if two smooth shaded sections are next to eachother)
-    if not triangulated:
-        for p in items:
-            blenderMesh.data.polygons[p].use_smooth = True
-
-        edgeMap = {}
-        for face in currentSet:
-            for edgeKey in blenderMesh.data.polygons[face].edge_keys:
-                if not edgeKeyMap.get(edgeKey, False): # weird case where the edge doesn't actually exist?
-                    continue
-                if not edgeMap.get(edgeKey, False):
-                    edgeMap[edgeKey] = 0
-                edgeMap[edgeKey] += 1
-        
-        for edge in edgeMap:
-            if edgeMap[edge] < 2:
-                blenderMesh.data.edges[edgeKeyMap[edge]].use_edge_sharp = True
+    for i in range(0,iBuffer.getNumIndices(),3):
+        face = polygons[i//3]
+        sv1 = vBuffer.getVertex(iBuffer.getIndex(i))
+        sv2 = vBuffer.getVertex(iBuffer.getIndex(i+1))
+        sv3 = vBuffer.getVertex(iBuffer.getIndex(i+2))
+        # data is guaranteed to be triangulated
+        if not cmp(sv1.getNormal(),face.normal,0.01) or not cmp(sv2.getNormal(),face.normal,0.01) or not cmp(sv3.getNormal(),face.normal,0.01):
+            face.use_smooth = True
 
 def vectorsEqualWithinTolerance(v1, v2, tolerance):
     return abs(v1[0]-v2[0]) < tolerance and abs(v1[1]-v2[1]) < tolerance and abs(v1[2]-v2[2]) < tolerance
