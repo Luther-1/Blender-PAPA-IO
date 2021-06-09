@@ -52,7 +52,6 @@ def write_papa(properties,context):
     file.close()
 
 def selectObject(obj):
-    bpy.ops.object.mode_set(mode='OBJECT')
     for i in bpy.context.selected_objects: 
         i.select_set(False) #deselect all objects
     obj.select_set(True)

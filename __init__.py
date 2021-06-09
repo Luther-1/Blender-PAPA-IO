@@ -21,7 +21,7 @@
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (0, 9, 2),
+    "version": (0, 9, 3),
     "blender": (2, 90, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
