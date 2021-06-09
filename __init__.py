@@ -21,7 +21,7 @@
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (0, 9, 1),
+    "version": (0, 9, 2),
     "blender": (2, 90, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
@@ -220,7 +220,7 @@ class PapaExportMaterialList(bpy.types.UIList):
 
 class PapaExportProperties:
     def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
-                        ignoreRoot:bool, ignoreHidden:bool,):
+                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool):
         self.__filepath = filepath
         self.__targetObject = target
         self.__isCSG = isCSG
@@ -232,6 +232,7 @@ class PapaExportProperties:
         self.__compressData = compressData
         self.__ignoreRoot = ignoreRoot
         self.__ignoreHidden = ignoreHidden
+        self.__ignoreNoData = ignoreNoData
 
     def getFilepath(self) -> str:
         return self.__filepath
@@ -260,6 +261,9 @@ class PapaExportProperties:
     def isIgnoreHidden(self):
         return self.__ignoreHidden
 
+    def isIgnoreNoData(self):
+        return self.__ignoreNoData
+
 class ExportPapaUISettings(PropertyGroup):
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"\
@@ -279,6 +283,7 @@ class ExportPapaUISettings(PropertyGroup):
 
     ignoreRoot: BoolProperty(name="Ignore Root Movement", description="Any bones with no parent will have all transforms removed",default=True)
     ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file",default=True)
+    ignoreNoData: BoolProperty(name="Skip Bones With No Data", description="Bones that have no animation data associated with them will not be written.",default=True)
 
 class ExportPapa(bpy.types.Operator, ExportHelper):
     """Export to PAPA file format (.papa)"""
@@ -313,6 +318,9 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
             row = l.row()
             row.prop(properties,"ignoreHidden")
+
+            row = l.row()
+            row.prop(properties,"ignoreNoData")
             return
 
         row = l.row()
@@ -389,7 +397,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
-            properties.ignoreRoot, properties.ignoreHidden)
+            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):

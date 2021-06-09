@@ -801,6 +801,9 @@ class AnimationBone:
     
     def getRotation(self, index) -> Quaternion:
         return self.__rotations[index]
+
+    def setNameIndex(self, index):
+        self.__nameIndex = index
     
     def setTranslation(self, index: int, translation: Vector):
         self.__translations[index] = translation
@@ -844,7 +847,7 @@ class PapaAnimation(PapaComponent):
             return self.__transformData[index]
         try:
             return self.__transformMap[index] # find by name. If it fails, there is no data for this bone. (not every bone gets data)
-        except Exception as e:
+        except KeyError:
             return None
     
     def __str__(self):

@@ -128,9 +128,6 @@ def load_papa(properties, context):
                     ind = materialMap[material]
                     for i in range(mat.getFirstIndex()//3, mat.getFirstIndex()//3 + mat.getNumPrimitives()):
                         blenderMesh.data.polygons[i].material_index = ind
-                    
-                    if mat.getNumPrimitives() != 0: # some materials have no vertices mapped to them
-                        materialCount+=1
                 
                 if papaFile.getNumTextures() > 0: # textures in the file itself, try to find them
                     for i in range(mesh.getNumMaterialGroups()):
@@ -151,25 +148,17 @@ def load_papa(properties, context):
                     blenderMaterial = None
                     isUnitShader = True
                     
-                    if materialCount == 1: # only one material with assigned faces, use that
-                        for i in range(mesh.getNumMaterialGroups()):
-                            mat = mesh.getMaterialGroup(i)
-                            if mat.getNumPrimitives == 0:
-                                continue
-                            blenderMaterial = blenderMesh.data.materials[materialMap[papaFile.getMaterial(mat.getMaterialIndex())]]
-                            isUnitShader = papaFile.getString(papaFile.getMaterial(mat.getMaterialIndex()).getShaderNameIndex()) == "solid" # should always be true
-                            break
-                    else: # Unknown state, just make a new material and override
-                        blenderMaterial = bpy.data.materials.new(name=papaFile.getString(model.getNameIndex())+"_Material")
-                        blenderMesh.data.materials.append(blenderMaterial)
-                        idx = len(blenderMesh.data.materials) - 1
+                    for i in range(mesh.getNumMaterialGroups()):
+                        mat = mesh.getMaterialGroup(i)
+                        if mat.getNumPrimitives == 0:
+                            continue
+                        blenderMaterial = blenderMesh.data.materials[materialMap[papaFile.getMaterial(mat.getMaterialIndex())]]
+                        isUnitShader = papaFile.getString(papaFile.getMaterial(mat.getMaterialIndex()).getShaderNameIndex()) == "solid" # should always be true
+                        
+                        if not isUnitShader:
+                            print("Warning: Data implies unit shader but actual shader was CSG shader.")
 
-                        for poly in blenderMesh.data.polygons:
-                            poly.material_index = idx
-                        print("Warning: Unit mesh has multiple materials with faces assigned. This is not known behaviour.")
-                    if not isUnitShader:
-                        print("Warning: Data implies unit shader but actual shader was CSG shader.")
-                    applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)
+                        applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)
                 # Smooth shading
                 # Every face in PA is smooth shaded, what matters is the vertex normals.
                 # For blender, if the vertex normals from the data do not match the face normal, it should be smooth shaded

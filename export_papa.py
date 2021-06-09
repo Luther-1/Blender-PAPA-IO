@@ -52,6 +52,7 @@ def write_papa(properties,context):
     file.close()
 
 def selectObject(obj):
+    bpy.ops.object.mode_set(mode='OBJECT')
     for i in bpy.context.selected_objects: 
         i.select_set(False) #deselect all objects
     obj.select_set(True)
@@ -675,6 +676,26 @@ def processBone(poseBone, animation):
             animBone.setTranslation(x,cl)
             animBone.setRotation(x,cr)
 
+def hasTransforms(animationBone:AnimationBone, frames:int):
+    if frames == 0:
+        return False
+    bl = animationBone.getTranslation(0)
+    br = animationBone.getRotation(0)
+    epsilon = 0.0001
+    if abs(bl[0]) > epsilon or abs(bl[1]) > epsilon or abs(bl[2]) > epsilon:
+        return True
+    if abs(br[0]-1) > epsilon or abs(br[1]) > epsilon or abs(br[2]) > epsilon or abs(br[3]) > epsilon:
+        return True
+    for i in range(1,frames):
+        l = animationBone.getTranslation(i)
+        r = animationBone.getRotation(i)
+        if abs(bl[0]-l[0]) > epsilon or abs(bl[1]-l[1]) > epsilon or abs(bl[2]-l[2]) > epsilon:
+            return True
+        if abs(br[0]-r[0]) > epsilon or abs(br[1]-r[1]) > epsilon or abs(br[2]-r[2]) > epsilon or abs(br[3]-r[3]) > epsilon:
+            return True
+        
+
+
 def writeAnimation(armature, properties, papaFile: PapaFile):
 
     selectObject(armature)
@@ -683,15 +704,8 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
         lastMode = "OBJECT" # edge case for weight paint shenengans
     bpy.ops.object.mode_set(mode='EDIT')
 
-    # first, build the string table
-    print("Generating Strings...")
-    for bone in armature.data.edit_bones:
-        print("\""+bone.name+"\"")
-        papaFile.addString(PapaString(bone.name))
-
     # now, create the animation
     print("Generating Animations...")
-    numBones = len(armature.data.edit_bones)
     numFrames = bpy.context.scene.frame_end - bpy.context.scene.frame_start + 1
     animationSpeed = round(bpy.context.scene.render.fps)
     savedStartFrame = bpy.context.scene.frame_current
@@ -702,7 +716,7 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     for bone in armature.pose.bones:
         if properties.isIgnoreHidden() and bone.bone.hide:
             continue
-        b = AnimationBone(papaFile.getStringIndex(bone.name),bone.name,[None] * numFrames, [None] * numFrames)
+        b = AnimationBone(-1,bone.name,[None] * numFrames, [None] * numFrames)
         animationBones.append(b)
         animationBoneMap[bone] = b
 
@@ -725,6 +739,18 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
             animationBone.setTranslation(frame, loc)
             animationBone.setRotation(frame, rot)
 
+    if properties.isIgnoreNoData():
+        newList = []
+        for bone in animationBones:
+            if hasTransforms(bone,numFrames):
+                newList.append(bone)
+                bone.setNameIndex(papaFile.addString(PapaString(bone.getName())))
+            else:
+                print("\""+bone.getName()+"\" has no data. Skipping...")
+
+        animationBones = newList
+
+
     # create and put an animation into the file
     animation = PapaAnimation(-1, len(animationBones),numFrames,animationSpeed,1,animationBones)
     print(animation)
@@ -732,9 +758,8 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
 
     # correct the transformations from blender data into PA data
     for bone in armature.pose.bones:
-        if properties.isIgnoreHidden() and bone.bone.hide:
-            continue
-        processBone(bone, animation)
+        if animation.getAnimationBone(bone.name) != None:
+            processBone(bone, animation)
 
     # put the header back
     bpy.context.scene.frame_current = savedStartFrame
