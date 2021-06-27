@@ -4,7 +4,7 @@ Blender python extension to import and export model, texture, and animation data
 Written by Raevn and updated by Luther.
 
 
-### Installation
+## Installation
 -Download the source code as a zip file and save to your PC (Do not unzip this file).
 
 -In Blender, navigate to edit -> preferences -> Add-ons.
@@ -15,7 +15,7 @@ Written by Raevn and updated by Luther.
 
 -You may need to enable the add on after installing. Search for "papa" and then find the add-on "Import-Export: Planeary Annihilation PAPA Format" and enable the check box.
 
-### Usage
+## Usage
 Import and export are located under the file -> import / export menus.
 
 #### Import
@@ -24,6 +24,6 @@ The importer supports all PA data. Models, Textures, and Animations. Simply navi
 #### Export
 Exporting a unit or an animation is as simple as selecting the target object and pressing export. For CSG, you must input the absolute or relative paths to the texture files. As long as the textures are in *any* /pa/ subdirectory it will automatically correct the path. You can use the small file buttons on the right of the paths to grab the active path from the exporter window and write it into the texture path.
 
-### Additional Info
+## Additional Info
 For more information about how specifically PA texture data is stored, see https://forums.planetaryannihilation.com/threads/reference-models-textures.48081/
 Note that the forum post states blue in material is unused, but it is actually an emission map for CSG only.
