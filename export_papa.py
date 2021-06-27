@@ -1,22 +1,25 @@
+# The MIT License
+# 
 # Copyright (c) 2013, 2014  Raevn
 # Copyright (c) 2021        Marcus Der      marcusder@hotmail.com
 #
-# ##### BEGIN GPL LICENSE BLOCK #####
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# ##### END GPL LICENSE BLOCK #####
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import bpy
 from mathutils import * # has vectors and quaternions
@@ -27,10 +30,67 @@ import time
 class PapaBuildException(Exception): # used as a filter
     pass
 
-def write_papa(properties,context):
+# used to hold nonfatal errors until export is done (this way nonfatal errors won't clutter the fatal one)
+class PapaExportNotifications:
+    __instance = None
+
+    def __init__(self):
+        self.__notifications = []
+
+    def addNotification(self, notificationType, notif=None):
+        if notif == None:
+            notif = notificationType
+            notificationType = {"WARNING"}
+
+        print(next(iter(notificationType))+":",notif)
+        self.__notifications.append( (notificationType,notif) )
+    
+    def getNumNotifications(self):
+        return len(self.__notifications)
+
+    def getNotification(self,idx):
+        return self.__notifications[idx]
+
+    @classmethod
+    def getInstance(cls):
+        return cls.__instance
+
+    @classmethod
+    def setup(cls):
+        cls.__instance = PapaExportNotifications()
+
+class PapaExportCache:
+    __instance = None
+
+    def __init__(self):
+        self.__skeletonCache = {}
+    
+    def addSkeleton(self, key, skeleton):
+        self.__skeletonCache[key] = skeleton
+    
+    def getSkeleton(self, key):
+        return self.__skeletonCache.get(key, None)
+
+    @classmethod
+    def getInstance(cls):
+        return cls.__instance
+
+    @classmethod
+    def setup(cls):
+        cls.__instance = PapaExportCache()
+
+def write_papa(properties, context, operator):
     filepath = properties.getFilepath()
     file_name=path.splitext(path.basename(filepath))[0]
     print("Starting export of "+file_name)
+    PapaExportNotifications.setup()
+    PapaExportCache.setup()
+
+    selected = []
+    for obj in bpy.context.selected_objects:
+        selected.append(obj)
+    activeObject = bpy.context.active_object
+    activeMode = bpy.context.active_object.mode if activeObject else None
     
     targetObjects = properties.getTargets()
     papaFile = PapaFile() # make the papafile container
@@ -51,6 +111,20 @@ def write_papa(properties,context):
     file.write(data)
     file.close()
 
+    for obj in bpy.context.selected_objects:
+        obj.select_set(False)
+    for obj in selected:
+        obj.select_set(True)
+    if activeObject:
+        bpy.context.view_layer.objects.active = activeObject
+        bpy.ops.object.mode_set(mode=activeMode)
+
+    notifications = PapaExportNotifications.getInstance()
+    if notifications.getNumNotifications() != 0:
+        for x in range(notifications.getNumNotifications()):
+            notif = notifications.getNotification(x)
+            operator.report(notif[0],notif[1])
+
 def selectObject(obj):
     for i in bpy.context.selected_objects: 
         i.select_set(False) #deselect all objects
@@ -63,10 +137,14 @@ def vectorToImmutableMapping(vector):
 def createFaceShadingIslands(mesh, properties):
     # in PA, smooth shading is defined by whether or not two faces share the same vertices
     # we must construct a map that tells us which faces are connected and which are not by assigning each face index to a shading index
+    vertices = mesh.data.vertices
     edges = mesh.data.edges
     polygons = mesh.data.polygons
 
-    edgeKeyToIndex = {key:i for i,key in enumerate(mesh.data.edge_keys)}
+    edgeKeyToIndex = {}
+    for edge in edges:
+        edgeKeyToIndex[edge.key] = edge.index
+    
     edgeKeyToFaces = {}
     for x in range(len(polygons)):
         for edgeKey in polygons[x].edge_keys:
@@ -112,13 +190,10 @@ def createFaceShadingIslands(mesh, properties):
         while len(openList) != 0:
             currentFace = openList.pop()
             faceMap[currentFace] = currentIndex
-            currentFace = polygons[currentFace]
 
             # lookup faces that have this edge
-            for edgeKey in currentFace.edge_keys:
+            for edgeKey in polygons[currentFace].edge_keys:
                 edgeIndex = edgeKeyToIndex.get(edgeKey,None)
-                if edgeIndex == None:
-                    continue # weirdness where sometimes an edge key doesn't map to a valid edge
                 edge = edges[edgeIndex]
 
                 # Respect the sharp of the model, also PA cannot store smooth shading data and split UVs together. We handle this edge case with the connection map
@@ -136,44 +211,92 @@ def createFaceShadingIslands(mesh, properties):
         currentIndex+=1
 
     if not properties.isRespectMarkSharp():
-        return faceMap, {}
+        return faceMap, {}, {}
 
-    connectionMap = {} # maps each vertex on each face to all connected faces
+    connectionMap = [] # [faceIndex][vertexIndex] -> all connected faces (sharp aware)
+    vertexShadingMap = [] # [faceIndex][vertexIndex] -> unique index to separate out local connection
+    tempShadingMap = {} # [uniqueIndex] -> maps the vertexShadingMap back to the connection map
+    currentIndex = 0
 
-    # for each face, get all connected faces
+    for _ in range(len(polygons)):
+        vertexShadingMap.append({})
+    
     for polyIdx in range(len(polygons)):
 
-        currentMap = {}
-        connectionMap[polyIdx] = currentMap
+        faceConnections = {}
+        connectionMap.append(faceConnections)
         for vertexIdx in polygons[polyIdx].vertices:
 
-            currentList = [polyIdx]
-            currentMap[vertexIdx] = currentList
-            seenFaces = {}
-            seenFaces[polyIdx] = True
-            # no smooth shading on this face, we're done
-            if polygons[polyIdx].use_smooth == False:
+            if not polygons[polyIdx].use_smooth:
+                # only connected to itself
+                faceConnections[vertexIdx] = [polyIdx]
                 continue
 
-            # lookup faces that have this edge
-            for edgeKey in polygons[polyIdx].edge_keys:
-                edgeIndex = edgeKeyToIndex.get(edgeKey,None)
-                if edgeIndex == None:
-                    continue
-                edge = edges[edgeIndex]
+            testVal = vertexShadingMap[polyIdx].get(vertexIdx, -1)
+            if testVal != -1:
+                # already computed, use that instead
+                faceConnections[vertexIdx] = tempShadingMap[testVal]
+                continue
 
-                # Only include edges that touch this vertex and respect the sharp of the model
-                if not vertexIdx in edge.vertices or edge.use_edge_sharp:
-                    continue
-                
-                faces = edgeKeyToFaces[edgeKey]
-                for faceKey in faces:
-                    if seenFaces.get(faceKey,False):
+            openList = [polyIdx]
+            seenFaces = {polyIdx: True}
+            connections = [polyIdx]
+            faceConnections[vertexIdx] = connections
+
+            while len(openList) != 0:
+                poly = openList.pop()
+                for key in polygons[poly].edge_keys:
+                    edge = edges[edgeKeyToIndex[key]]
+                    if edge.use_edge_sharp or not vertexIdx in edge.vertices:
                         continue
-                    seenFaces[faceKey] = True
-                    currentList.append(faceKey)
 
-    return faceMap, connectionMap
+                    faces = edgeKeyToFaces[key]
+                    for faceIdx in faces:
+                        if seenFaces.get(faceIdx, False):
+                            continue
+                        seenFaces[faceIdx] = True
+                        openList.append(faceIdx)
+                        connections.append(faceIdx)
+                        vertexShadingMap[faceIdx][vertexIdx] = currentIndex
+
+            tempShadingMap[currentIndex] = connections
+            currentIndex+=1
+
+    angleMap = [] # [faceIndex][vertexIndex] -> angle in radians between the edges that connect to this vertex
+    for _ in range(len(polygons)):
+        angleMap.append({})
+
+    for polyIdx in range(len(polygons)):
+        polyEdges = []
+        for key in polygons[polyIdx].edge_keys:
+            polyEdges.append(edges[edgeKeyToIndex[key]])
+
+        for vertexIdx in polygons[polyIdx].vertices:
+            # find the two edges that make up this face
+            currentEdges = []
+            for edge in polyEdges:
+                if vertexIdx in edge.vertices:
+                    currentEdges.append(edge)
+            
+            # every face must have at exactly 2 edges that touch a vertex, or else it is not a face.
+            v1 = currentEdges[0].vertices[0]
+            v2 = currentEdges[0].vertices[1]
+            v3 = currentEdges[1].vertices[0]
+            v4 = currentEdges[1].vertices[1]
+
+            if v1 == vertexIdx:
+                vec1 = Vector(vertices[v2].co) - Vector(vertices[v1].co)
+            else:
+                vec1 = Vector(vertices[v1].co) - Vector(vertices[v2].co)
+
+            if v3 == vertexIdx:
+                vec2 = Vector(vertices[v4].co) - Vector(vertices[v3].co)
+            else:
+                vec2 = Vector(vertices[v3].co) - Vector(vertices[v4].co)
+
+            angleMap[polyIdx][vertexIdx] = vec1.angle(vec2)
+
+    return faceMap, connectionMap, angleMap
 
 def createFaceMaterialIslands(mesh):
     # faces that use a material must be laid out sequentially in the data
@@ -184,7 +307,6 @@ def createFaceMaterialIslands(mesh):
     for _ in mesh.data.materials:
         materialMap.append([])
     if len(materialMap) == 0:
-        print("Warning: No materials on object.")
         materialMap.append([])
 
     for x in range(len(polygons)):
@@ -193,12 +315,13 @@ def createFaceMaterialIslands(mesh):
         materialMap[idx].append(x)
     return materialMap
 
-def createBoneWeightMap(mesh):
+def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBones:dict):
     # simplifies down the lookup process to be just a vertex index
     boneWeightMap = []
     vertices = mesh.data.vertices
     vertexGroups = mesh.vertex_groups
 
+    invalidVertices = 0
     for x in range(len(vertices)):
         vertex = vertices[x]
         vertexGroupElements = vertex.groups
@@ -208,10 +331,27 @@ def createBoneWeightMap(mesh):
             weight = vertexGroupElement.weight
 
             # max 4 weights per bone
-            if len(boneWeightMap[x]) >= 4 or weight <= 0.0001:
+            if len(boneWeightMap[x]) >= 4:
+                invalidVertices+=1
+                break
+            
+            if weight < 1/255 or hiddenBones.get(name,True):
                 continue
 
             boneWeightMap[x].append( (name, weight) )
+
+    if invalidVertices!=0:
+        PapaExportNotifications.getInstance().addNotification(str(invalidVertices)+" vertices have more than 4 weight links. PA does not support this.")
+    invalidVertices=0
+    
+    # report missing weights
+    for x in range(len(boneWeightMap)):
+        if len(boneWeightMap[x]) == 0:
+            invalidVertices+=1
+            bone = skeleton.getBone(0)
+            boneWeightMap[x].append( (papaFile.getString(bone.getNameIndex()), 1) ) # add implicit data
+    if invalidVertices!=0:
+        PapaExportNotifications.getInstance().addNotification(str(invalidVertices)+" vertices have no weight links. All vertices must have at least one weight link.")
     return boneWeightMap
 
 def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWeightMap, papaSkeleton:PapaSkeleton, uvMap:dict, vertexData:dict, properties):
@@ -246,24 +386,24 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
 
             # for each vertex, check if it's shading region claims to have the same vertex already
             bucket = shadingBuckets[shadingRegion]
-            hasVertex = bucket.get(idx,False)
+            knownVertices = bucket.get(idx,False)
 
-            if hasVertex:
+            if knownVertices:
                 # this region claims to have vertex data for this location,
                 # however, there is also the possibility of UVs not aligning, so now we need to check if UVs align
-                lst = bucket[idx]
+                normal = vertexData[0][poly.index][idx]
                 uv1 = uvMap[0][poly.index][idx]
                 foundVertex = False
                 if properties.isCSG(): # respect shadow map as well
                     uv2 = uvMap[1][poly.index][idx]
-                    for x in lst:
-                        if(x[1] == uv1 and x[2] == uv2): # found a match, select it
+                    for x in knownVertices:
+                        if(x[1] == uv1 and x[2] == uv2 and x[3] == normal): # found a match, select it
                             vertexFaceMap[idx][poly.index] = x[0]
                             foundVertex = True
                             break
                 else:
-                    for x in lst:
-                        if(x[1] == uv1):
+                    for x in knownVertices:
+                        if(x[1] == uv1 and x[3] == normal):
                             vertexFaceMap[idx][poly.index] = x[0]
                             foundVertex = True
                             break
@@ -271,11 +411,9 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                     continue
             
             # if we didn't find a matching UV, or there exists no data for this vertex, make a new vertex and register it
-            v = vertices[idx]
-
             if properties.isCSG():
                 # Position3Normal3Tan3Bin3TexCoord4
-                loc = Vector(v.co)
+                loc = Vector(vertices[idx].co)
                 normal = vertexData[0][poly.index][idx]
                 tangent = vertexData[1][poly.index][idx]
                 binormal = vertexData[2][poly.index][idx]
@@ -283,7 +421,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                 texCoord2 = uvMap[1][poly.index][idx]
                 v = PapaVertex(pos=loc,norm=normal,binorm=binormal,tan=tangent,texcoord1=texCoord1,texcoord2=texCoord2)
             else:
-                loc = Vector(v.co)
+                loc = Vector(vertices[idx].co)
                 weightList = [0] * 4
                 boneList = [0] * 4
                 if papaSkeleton:
@@ -302,8 +440,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
 
                 normal = vertexData[0][poly.index][idx]
                 texCoord1 = uvMap[0][poly.index][idx]
-                texCoord2 = None # required for later
-
+                texCoord2 = None # required for buckets
                 v = PapaVertex(pos=loc, norm=normal, texcoord1=texCoord1, bones=boneList, weights=weightList)
             vertexIndex = len(vertexList)
             vertexFaceMap[idx][poly.index] = vertexIndex
@@ -312,12 +449,14 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
             # register in the bucket
             if not bucket.get(idx,False):
                 bucket[idx] = []
-            bucket[idx].append( (vertexIndex, texCoord1, texCoord2) )
+            bucket[idx].append( (vertexIndex, texCoord1, texCoord2, normal) )
     vertexFormat = 10 if properties.isCSG() else 8
     vBuffer = PapaVertexBuffer(vertexFormat,vertexList)
     print(vBuffer)
 
 
+    seenVertices = [False] * len(vertices)
+    vertexCount = 0
     print("Generating Index Buffers...")
     # build a lookup from face to triangle
     triangleTable = {}
@@ -325,7 +464,14 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
         if not triangleTable.get(tri.polygon_index):
             triangleTable[tri.polygon_index] = []
         triangleTable[tri.polygon_index].append(tri)
-
+        for x in range(3):
+            if not seenVertices[tri.vertices[x]]:
+                seenVertices[tri.vertices[x]] = True
+                vertexCount+=1
+    
+    if vertexCount != len(vertices):
+        PapaExportNotifications.getInstance().addNotification("1D geometry on model (loose edge or vertex). "
+            + str(len(vertices)-vertexCount)+" unaccounted for vertice(s)")
 
     materialGroupIndices = [] # map list of tuples
     indices = []
@@ -355,11 +501,11 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
     materialGroups = []
     materialIndex = 0
     for x in range(len(materialMap)): # traverse the material map in order
-        vertexData = materialGroupIndices[x]
+        materialData = materialGroupIndices[x]
         mat = mesh.material_slots[x]
         nameIndex = papaFile.addString(PapaString(mat.name))
-        numPrimitives = vertexData[1] - vertexData[0]
-        startLocation = vertexData[0] * 3 
+        numPrimitives = materialData[1] - materialData[0]
+        startLocation = materialData[0] * 3 
         matGroup = PapaMaterialGroup(nameIndex,materialIndex,startLocation,numPrimitives,PapaMaterialGroup.TRIANGLES)
         print(matGroup)
         materialGroups.append(matGroup)
@@ -416,6 +562,7 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
 
         if(len(mesh.material_slots) == 0): # guarantee at least one material, doesn't matter for units
             mesh.data.materials.append(bpy.data.materials.new(name=mesh.name+"_implicit"))
+            PapaExportNotifications.getInstance().addNotification({"INFO"},"No materials on object \""+mesh.name+"\". New material generated: "+mesh.name+"_implicit")
 
         for _ in mesh.material_slots:
             mat = PapaMaterial(nameIndex,[PapaVectorParameter(papaFile.addString(PapaString("DiffuseColor")),Vector([0.5,0.5,0.5,0]))],[],[])
@@ -423,10 +570,24 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
             materials.append(mat)
     return materials
 
+def isDefaultRotation(quat):
+    # (1,0,0,0)
+    epsilon = 0.0001
+    return abs(quat[0]-1) < epsilon and abs(quat[1]) < epsilon and abs(quat[2]) < epsilon and abs(quat[3]) < epsilon
+
+# gets the parent bone, hide aware
+def editBoneParent(properties, editBone):
+    if not properties.isIgnoreHidden():
+        return editBone.parent
+    while editBone.parent:
+        editBone = editBone.parent
+        if not editBone.hide:
+            return editBone
+    return None
+
 def createSkeleton(papaFile: PapaFile, mesh, properties):
     lastMode = bpy.context.object.mode
-    if not lastMode in ["OBJECT","EDIT","POSE"]:
-        lastMode = "OBJECT" # edge case for weight paint shenengans
+    
     armature = None
 
     for modifier in mesh.modifiers:
@@ -434,25 +595,38 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
             armature = modifier.object
             break
     if armature == None:
-        return None
+        return None, None
 
     selectObject(armature)
     bpy.ops.object.mode_set(mode='EDIT')
 
     print("Generating Skeletons...")
+
+    if PapaExportCache.getInstance().getSkeleton(armature):
+        print("Found skeleton in cache.")
+        return PapaExportCache.getInstance().getSkeleton(armature)
+
     boneList = []
     boneMap = {}
+    hiddenBones = {}
+    numRootBones = 0
     for bone in armature.data.edit_bones:
-        
+        hiddenBones[bone.name] = False
         # ignore hidden bones. Mostly for IK animation
         if properties.isIgnoreHidden() and bone.hide:
+            hiddenBones[bone.name] = True
             continue
 
         mat = bone.matrix
-        if bone.parent:
-            loc, q, _ = (bone.parent.matrix.inverted() @ mat).decompose()
+        if editBoneParent(properties, bone):
+            loc, q, _ = (editBoneParent(properties, bone).matrix.inverted() @ mat).decompose()
         else:
             loc, q, _ = mat.decompose()
+            numRootBones+=1
+            if numRootBones != 1:
+                PapaExportNotifications.getInstance().addNotification("Skeleton \""+armature.name+"\" has more than one root bone. ("+bone.name+" has no parent)")
+            if not isDefaultRotation(q):
+                PapaExportNotifications.getInstance().addNotification("Root bone ("+bone.name+") is not rotated -90 degrees on x axis from bind pose.")
         rot = Quaternion((q[1],q[2],q[3],q[0]))
 
         
@@ -460,20 +634,25 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
 
         boneMap[bone.name] = len(boneList)
         boneList.append(papaBone)
+
+    if len(boneList) > 32:
+        PapaExportNotifications.getInstance().addNotification("Skeleton \""+armature.name+"\" exceeds maximum bone count. ("+str(len(boneList))+" > 32)")
     
     # map parents
     for bone in boneList:
         editBone = armature.data.edit_bones[papaFile.getString(bone.getNameIndex())]
-        if not editBone.parent or (properties.isIgnoreHidden() and editBone.hide):
+        if not editBoneParent(properties, editBone) or (properties.isIgnoreHidden() and editBone.hide):
             continue
 
-        parentIndex = boneMap[editBone.parent.name]
+        parentIndex = boneMap[editBoneParent(properties, editBone).name]
         bone.setParentIndex(parentIndex)
 
     bpy.ops.object.mode_set(mode=lastMode)
     skeleton = PapaSkeleton(boneList)
+    PapaExportCache.getInstance().addSkeleton(armature, (skeleton, hiddenBones))
     print(skeleton)
-    return skeleton
+    return skeleton, hiddenBones
+
 
 def computeUVData(mesh, properties):
     uvMap = {}
@@ -509,7 +688,7 @@ def computeUVData(mesh, properties):
     
     return uvMap
 
-def computeVertexData(mesh, connectionMap, properties):
+def computeVertexData(mesh, connectionMap, angleMap, properties):
     # calculate the normal of each vertex in the mesh. if the face is flat shaded, the normal is the same as the
     # polygon. If it is flat shaded, the normal is the average of all similar shaded touching faces' normals
     polygons = mesh.data.polygons
@@ -539,12 +718,12 @@ def computeVertexData(mesh, connectionMap, properties):
             if not poly.use_smooth: 
                 nMap[idx] = Vector(poly.normal)
             elif properties.isRespectMarkSharp():
-                normal = Vector( (0,0,0) )
+                normal = Vector([0,0,0])
                 for faceIdx in connectionMap[poly.index][idx]: # use the connection map to build a normal (respects sharp)
-                    normal += polygons[faceIdx].normal
+                    normal+=Vector(polygons[faceIdx].normal) * angleMap[faceIdx][idx]
                 nMap[idx] = normal.normalized()
             else:
-                nMap[idx] = vertices[idx].normal
+                nMap[idx] = Vector(vertices[idx].normal)
     if properties.isCSG():
         # calculate the tangents and bitangents
         
@@ -558,16 +737,15 @@ def computeVertexData(mesh, connectionMap, properties):
             for loopIndex in poly.loop_indices:
                 loop = loops[loopIndex]
                 idx = loop.vertex_index
-                tMap[idx] = loop.tangent
-                bMap[idx] = loop.bitangent
+                # convert to tuples so the data stays after we free it
+                tMap[idx] = (loop.tangent[0], loop.tangent[1], loop.tangent[2])
+                bMap[idx] = (loop.bitangent[0], loop.bitangent[1], loop.bitangent[2])
 
     return vertexData
 
 def writeMesh(mesh, properties, papaFile: PapaFile):
     selectObject(mesh)
     lastMode = bpy.context.object.mode
-    if not lastMode in ["OBJECT","EDIT","POSE"]:
-        lastMode = "OBJECT" # edge case for weight paint shenengans
     bpy.ops.object.mode_set(mode='OBJECT') # must be in object mode to get UV data
 
     # set up data
@@ -575,23 +753,24 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
 
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
     # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
-    shadingMap, connectionMap = createFaceShadingIslands(mesh, properties) 
-    materialMap = createFaceMaterialIslands(mesh) # materialIndex -> polygon[]
+    shadingMap, connectionMap, angleMap = createFaceShadingIslands(mesh, properties) 
+    materialMap = createFaceMaterialIslands(mesh) # materialIndex -> list of polygons that use that material
 
     uvMap = computeUVData(mesh, properties) # [mapIndex (0 for main UV, 1 for shadow map)][face][vertex] -> UV coord
 
     bpy.ops.object.mode_set(mode='EDIT') # swap to edit to get the triangles and normals
     mesh.data.calc_loop_triangles()
-    mesh.data.calc_normals()
+    mesh.data.calc_normals_split()
+
     if properties.isCSG():
-        mapName = mesh.data.uv_layers[1].name # use texture UV map
+        mapName = mesh.data.uv_layers[0].name # use texture UV map
         mesh.data.calc_tangents(uvmap=mapName)
 
-    vertexData = computeVertexData(mesh, connectionMap, properties) # [normal=0, tangent=1, binormal=2][face][vertex] -> normal direction
+    vertexData = computeVertexData(mesh, connectionMap, angleMap, properties) # [normal=0, tangent=1, binormal=2][face][vertex] -> normal direction
 
-    papaSkeleton = createSkeleton(papaFile, mesh, properties)
-    # TODO: make this generate an implicit bone
-    boneWeightMap = {} if papaSkeleton == None else createBoneWeightMap(mesh) # map each vertex index to a list of tupes (bone_name: str, bone_weight: float)
+    papaSkeleton, hiddenBones = createSkeleton(papaFile, mesh, properties)
+    # map each vertex index to a list of tupes (bone_name: str, bone_weight: float)
+    boneWeightMap = {} if papaSkeleton == None else createBoneWeightMap(mesh, papaFile, papaSkeleton, hiddenBones)
     skeletonIndex = -1
     if papaSkeleton:
         skeletonIndex = papaFile.addSkeleton(papaSkeleton)
@@ -633,21 +812,24 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     papaFile.addModel(papaModel)
 
     # set the mode back
+    selectObject(mesh)
     bpy.ops.object.mode_set(mode=lastMode)
 
     if properties.isCSG():
         mesh.data.free_tangents()
 
 
-def processBone(poseBone, animation):
+def processBone(poseBone, animation, properties):
     # this is an inverted form of processBone in import_papa.
     # The code does all the operations in reverse to turn the blender formatted data back into PA formatted data
     animBone = animation.getAnimationBone(poseBone.name)
     bone = poseBone.bone
+    parent = poseBoneParent(properties, poseBone)
     
-    if bone.parent:
-        commonMatrix = bone.matrix_local.inverted() @ bone.parent.matrix_local
-        _,cr,_ = (bone.parent.matrix_local.inverted() @ bone.matrix_local).decompose()
+    if parent:
+        parent = parent.bone
+        commonMatrix = bone.matrix_local.inverted() @ parent.matrix_local
+        _,cr,_ = (parent.matrix_local.inverted() @ bone.matrix_local).decompose()
         locationCorrectionMatrix = cr.to_matrix().to_4x4()
 
         for x in range(animation.getNumFrames()): # both rotation and translation processed here.
@@ -692,15 +874,20 @@ def hasTransforms(animationBone:AnimationBone, frames:int):
             return True
         if abs(br[0]-r[0]) > epsilon or abs(br[1]-r[1]) > epsilon or abs(br[2]-r[2]) > epsilon or abs(br[3]-r[3]) > epsilon:
             return True
-        
 
+def poseBoneParent(properties, poseBone):
+    if not properties.isIgnoreHidden():
+        return poseBone.parent
+    while poseBone.parent:
+        poseBone = poseBone.parent
+        if not poseBone.bone.hide:
+            return poseBone
+    return None        
 
 def writeAnimation(armature, properties, papaFile: PapaFile):
 
     selectObject(armature)
     lastMode = bpy.context.object.mode
-    if not lastMode in ["OBJECT","EDIT","POSE"]:
-        lastMode = "OBJECT" # edge case for weight paint shenengans
     bpy.ops.object.mode_set(mode='EDIT')
 
     # now, create the animation
@@ -728,8 +915,8 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
                 continue
             animationBone = animationBoneMap[bone]
 
-            if properties.isIgnoreRoot() and not bone.parent:
-                matrix = bone.bone.matrix_local
+            if properties.isIgnoreRoot() and not poseBoneParent(properties, bone):
+                matrix = armature.convert_space(pose_bone=bone, matrix=bone.bone.matrix_local, from_space='POSE',to_space='LOCAL')
             else:    
                 # convert the matrix back into local space for compilation
                 matrix = armature.convert_space(pose_bone=bone, matrix=bone.matrix, from_space='POSE',to_space='LOCAL')
@@ -755,10 +942,20 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     print(animation)
     papaFile.addAnimation(animation)
 
+    # check for possible errors
+    numRootBones = 0
+    for bone in armature.pose.bones:
+        if properties.isIgnoreHidden() and bone.bone.hide:
+                continue
+        if not poseBoneParent(properties, bone):
+            numRootBones+=1
+            if numRootBones != 1:
+                PapaExportNotifications.getInstance().addNotification("Exported animation has more than one root bone. ("+bone.name+" has no parent)")
+    
     # correct the transformations from blender data into PA data
     for bone in armature.pose.bones:
         if animation.getAnimationBone(bone.name) != None:
-            processBone(bone, animation)
+            processBone(bone, animation, properties)
 
     # put the header back
     bpy.context.scene.frame_current = savedStartFrame
@@ -768,12 +965,13 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
 
 def write(operator,context,properties):
     t = time.time()
-    result = write_papa(properties,context)
+    result = write_papa(properties, context, operator)
     t = time.time() - t
     print("Done in "+str(int(t*1000)) + "ms")
     if result:
         operator.report({result[0]}, result[1])
         return {'CANCELLED'}
-
+    if not operator.has_reports:
+        operator.report({"INFO"},"Done in "+str(int(t*1000)) + "ms")
     return {'FINISHED'}
 

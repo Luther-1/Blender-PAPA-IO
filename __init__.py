@@ -1,27 +1,30 @@
+# The MIT License
+# 
 # Copyright (c) 2013, 2014  Raevn
 # Copyright (c) 2021        Marcus Der      marcusder@hotmail.com
 #
-# ##### BEGIN GPL LICENSE BLOCK #####
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# ##### END GPL LICENSE BLOCK #####
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (0, 9, 3),
+    "version": (1, 0, 0),
     "blender": (2, 90, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
@@ -82,7 +85,7 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
         maxlen= 1024, default= "")
        
     fuzzyMatch : BoolProperty(name="Fuzzy Match Animation Targets",description="Don't require all bones to match to import an animation.", default=True)
-    importTextures : BoolProperty(name="Auto Import Texture Files (Slow!)",description="Automatically import the " \
+    importTextures : BoolProperty(name="Auto Import Texture Files (Slow!)",description="Automatically import the "
         + "diffuse, mask, and specular textures from the same folder or linked destinations if they exist", default=True)
     convertToQuads : BoolProperty(name="Convert to Quads",description="Perform a tris to quads conversion before removing doubles", default=True)
     removeDoubles : BoolProperty(name="Remove Doubles",description="Removes double vertices on each mesh", default=True)
@@ -201,14 +204,14 @@ class PapaExportMaterialList(bpy.types.UIList):
             operatorProps.propertyName = "texturePath"
         if shader >= 2:
             r = column.row()
-            r.alert = not path.isfile(item["normalPath"])
+            r.alert = not self.isPathValid(item["normalPath"])
             r.prop(item,"normalPath")
             operatorProps = r.operator(PapaExportMaterialGetPath.bl_idname,icon="FILE_TICK",text="")
             operatorProps.propertyIndex = item.exportIndex
             operatorProps.propertyName = "normalPath"
         if shader >= 3:
             r = column.row()
-            r.alert = not path.isfile(item["materialPath"])
+            r.alert = not self.isPathValid(item["materialPath"])
             r.prop(item,"materialPath")
             operatorProps = r.operator(PapaExportMaterialGetPath.bl_idname,icon="FILE_TICK",text="")
             operatorProps.propertyIndex = item.exportIndex
@@ -266,9 +269,9 @@ class PapaExportProperties:
 
 class ExportPapaUISettings(PropertyGroup):
 
-    markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"\
+    markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"
         + " shaded faces which are marked sharp as disconnected",default=True)
-    compress: BoolProperty(name="Join Similar Polygons", description="Joins the data of any faces that have the same normals to reduce file size."\
+    compress: BoolProperty(name="Join Similar Polygons", description="Joins the data of any faces that have the same normals to reduce file size."
         + " Does nothing if the face is smooth shaded",default=True)
     isCSG : BoolProperty(name="Export as CSG",description="Exports the selected object as a CSG instead of as a unit. Cannot be used if multiple meshes are selected")
 
@@ -282,7 +285,8 @@ class ExportPapaUISettings(PropertyGroup):
     CSGExportShader: EnumProperty(name="",description="Export shader type",items=shaderOptions)
 
     ignoreRoot: BoolProperty(name="Ignore Root Movement", description="Any bones with no parent will have all transforms removed",default=True)
-    ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file",default=True)
+    ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file."
+        + " (Edit bones for model export, pose bones for animation export)",default=True)
     ignoreNoData: BoolProperty(name="Skip Bones With No Data", description="Bones that have no animation data associated with them will not be written.",default=True)
 
 class ExportPapa(bpy.types.Operator, ExportHelper):
@@ -580,6 +584,8 @@ def register():
         register_class(cls)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    # bpy.types.IMAGE_MT_image.append(menu_func_texture_export)
+    # bpy.types.IMAGE_MT_image.append(menu_func_texture_import)
 
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST = CollectionProperty(type = PapaExportMaterialListItem)
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE = IntProperty()

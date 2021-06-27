@@ -1,22 +1,25 @@
+# The MIT License
+# 
 # Copyright (c) 2013, 2014  Raevn
 # Copyright (c) 2021        Marcus Der      marcusder@hotmail.com
 #
-# ##### BEGIN GPL LICENSE BLOCK #####
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# ##### END GPL LICENSE BLOCK #####
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import bpy
 from os import path
@@ -51,13 +54,14 @@ def load_papa(properties, context):
     importedTexture = None
     importedMask = None
     importedMaterial = None
-    if(properties.isImportTextures() and papaFile.getNumModels() > 0):
-        importedTexture = extractTexture(filepath,"_diffuse", textureMap)
-        importedMask = extractTexture(filepath,"_mask", textureMap) if importedTexture else None # skip if we missed the texture
-        importedMaterial = extractTexture(filepath,"_material", textureMap) if importedMask else None # skip if we missed the mask or the texture
+    if(papaFile.getNumModels() > 0):
+        importedTexture = extractTexture(filepath,"_diffuse", textureMap, properties)
+        importedMask = extractTexture(filepath,"_mask", textureMap, properties) if importedTexture else None # skip if we missed the texture
+        importedMaterial = extractTexture(filepath,"_material", textureMap, properties) if importedMask else None # skip if we missed the mask or the texture
 
     # Import each model in the file
     if(papaFile.getNumModels() > 0):
+        armatureCache = {}
         for x in range(papaFile.getNumModels()):
 
             model = papaFile.getModel(x)
@@ -73,14 +77,18 @@ def load_papa(properties, context):
                 vBuffer = papaFile.getVertexBuffer(mesh.getVertexBufferIndex())
                 iBuffer = papaFile.getIndexBuffer(mesh.getIndexBufferIndex())
                 # model to scene or mesh to model often cause CSGs to be imported far off of the center.
-                blenderMesh = createMeshFromData(papaFile.getString(meshBinding.getNameIndex()),vBuffer,iBuffer, model.getModelToScene() @ meshBinding.getMeshToModel()) 
+                blenderMesh = createMeshFromData(papaFile.getString(meshBinding.getNameIndex()),vBuffer,iBuffer, model.getModelToScene() @ meshBinding.getMeshToModel())
 
                 meshGroups.append((vBuffer, blenderMesh))
                 currentMeshes.append(blenderMesh)
 
+                # Smooth shading must be done before custom normals
+                shadeSmoothFromData(blenderMesh,iBuffer,vBuffer)
+
                 if(vBuffer.getNumVertices()==0):
                     continue
 
+                # apply UV and normals
                 vertex = vBuffer.getVertex(0)
                 if(vertex.getTexcoord1()!=None):
                     uv = blenderMesh.data.uv_layers.new(name="UVMap")
@@ -104,8 +112,6 @@ def load_papa(properties, context):
                     blenderMesh.data.normals_split_custom_set_from_vertices(normals)
 
                 # create the material groups
-
-                materialCount = 0 # the amount of materials that actually are assigned to vertices
                 materialMap = {}
                 for i in range(mesh.getNumMaterialGroups()):
                     mat = mesh.getMaterialGroup(i)
@@ -135,15 +141,26 @@ def load_papa(properties, context):
                         mat = papaFile.getMaterial(matGroup.getMaterialIndex())
                         if mat.getNumTextureParams() == 0:
                             continue # no mapping
-                        diffuse = blenderTextureFromMaterial(papaFile, mat, "DiffuseTexture", textureMap)
-                        normal = blenderTextureFromMaterial(papaFile, mat, "NormalTexture", textureMap)
-                        material = blenderTextureFromMaterial(papaFile, mat, "MaterialTexture", textureMap)
+
+                        if(properties.isImportTextures()):
+                            diffuse = blenderTextureFromMaterial(papaFile, mat, "DiffuseTexture", textureMap)
+                            normal = blenderTextureFromMaterial(papaFile, mat, "NormalTexture", textureMap)
+                            material = blenderTextureFromMaterial(papaFile, mat, "MaterialTexture", textureMap)
+                        else:
+                            diffuse = papaTextureFromMaterial(papaFile, mat, "DiffuseTexture")
+                            normal = papaTextureFromMaterial(papaFile, mat, "NormalTexture")
+                            material = papaTextureFromMaterial(papaFile, mat, "MaterialTexture")
+
                         isUnitShader = papaFile.getString(mat.getShaderNameIndex()) == "solid"
                         
                         blenderMaterial = blenderMesh.data.materials[materialMap[papaFile.getMaterial(matGroup.getMaterialIndex())]]
                         if isUnitShader:
                             print("Warning: Data implies CSG shader but actual shader was unit shader.")
-                        applyTexture(blenderMaterial, diffuse, None, material, normal, isUnitShader)
+                        
+                        if(properties.isImportTextures()):
+                            applyTexture(blenderMaterial, diffuse, None, material, normal, isUnitShader)
+                        else:
+                            applyTexturePathsFromData(blenderMaterial, diffuse, None, material, normal)
                 elif importedTexture != None: # Auto apply the diffuse, mask, and specular textures
                     blenderMaterial = None
                     isUnitShader = True
@@ -158,25 +175,26 @@ def load_papa(properties, context):
                         if not isUnitShader:
                             print("Warning: Data implies unit shader but actual shader was CSG shader.")
 
-                        applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)
-                # Smooth shading
-                # Every face in PA is smooth shaded, what matters is the vertex normals.
-                # For blender, if the vertex normals from the data do not match the face normal, it should be smooth shaded
-                shadeSmoothFromData(blenderMesh,iBuffer,vBuffer)
+                        if properties.isImportTextures():
+                            applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)
+                        else:
+                            applyTexturePathsFromData(blenderMaterial, importedTexture, importedMask, importedMaterial, None)
                 
-
             # armatures
             if(model.getSkeletonIndex()>=0):
-                blenderArmature = createArmatureFromData(papaFile.getString(model.getNameIndex())+"_Armature")
-                armatureName = blenderArmature.name
-                blenderArmatureData = blenderArmature.data
-                editBones = blenderArmatureData.edit_bones
-                
-                bpy.ops.object.mode_set(mode='OBJECT')
-                bpy.context.scene.cursor.location = (0.0,0.0,0.0)  
-                bpy.ops.object.origin_set(type='ORIGIN_CURSOR')
-                bpy.ops.object.mode_set(mode='EDIT')
+                if not armatureCache.get(model.getSkeletonIndex()):
+                    blenderArmature = createArmatureFromData(papaFile.getString(model.getNameIndex())+"_Armature")
+                    armatureName = blenderArmature.name
+                    armatureCache[model.getSkeletonIndex()] = blenderArmature
+                    bpy.ops.object.mode_set(mode='EDIT')
+                else:
+                    blenderArmature = armatureCache[model.getSkeletonIndex()]
+                    armatureName = blenderArmature.name
+                    blenderArmature.select_set(True)
+                    bpy.context.view_layer.objects.active = blenderArmature
+                    bpy.ops.object.mode_set(mode='EDIT')
 
+                editBones = blenderArmature.data.edit_bones
                 skeleton = papaFile.getSkeleton(model.getSkeletonIndex())
                 for b in range(skeleton.getNumBones()):
                     bone = skeleton.getBone(b)
@@ -201,17 +219,29 @@ def load_papa(properties, context):
                     else:
                         aBone.head = (0,0,0)
                         aBone.tail = (0,1,0) # head and tail required, but are overwritten
-                        aBone.matrix = bone.getBindToBone()
+                        aBone.matrix = bone.getBindToBone().inverted()
 
-                    # for each bone, loop through all vertices in all meshes and check their weight
-                    # TODO: bone mappings!
-                    for m in range(len(meshGroups)):
-                        bufferMeshPair = meshGroups[m]
-                        vertexGroup = bufferMeshPair[1].vertex_groups.new(name=boneName)
-                        for v in range(bufferMeshPair[0].getNumVertices()):
-                            weight = bufferMeshPair[0].getVertex(v).getWeight(b)
-                            if(weight!=0):
-                                vertexGroup.add([v],weight,"ADD")
+                # for each bone, loop through all vertices in all meshes and check their weight
+                # TODO: bone mappings!
+                for m in range(len(meshGroups)):
+                    bufferMeshPair = meshGroups[m]
+                    vertexGroups = [] # [boneIndex] -> vertexGroup
+
+                    # create the vertex groups for this mesh
+                    for b in range(skeleton.getNumBones()):
+                        bone = skeleton.getBone(b)
+                        boneName = papaFile.getString(bone.getNameIndex())
+                        vertexGroups.append(bufferMeshPair[1].vertex_groups.new(name=boneName))
+                    
+                    # apply bone weights
+                    for v in range(bufferMeshPair[0].getNumVertices()):
+                        vertex = bufferMeshPair[0].getVertex(v)
+                        bones = vertex.getBones()
+                        weights = vertex.getWeights()
+                        for w in range(4):
+                            if(weights[w]==0):
+                                break
+                            vertexGroups[bones[w]].add([v],weights[w],"ADD")
                 
                 # move armature to new collection
                 bpy.context.view_layer.objects.active = blenderArmature
@@ -228,6 +258,12 @@ def load_papa(properties, context):
                     currentMeshes[i].modifiers.new(name = modifierName, type = "ARMATURE")
                     currentMeshes[i].modifiers[modifierName].object = blenderArmature
 
+            for m in range(len(meshGroups)):
+                bufferMeshPair = meshGroups[m]
+                mesh = bufferMeshPair[1]
+                if(mesh.data.validate()):
+                    print("Warning: Some data on model \""+mesh.name+"\" is invalid and was removed.")
+            
             if properties.isConvertToQuads():
                 for m in range(len(meshGroups)):
                     bufferMeshPair = meshGroups[m]
@@ -255,7 +291,7 @@ def load_papa(properties, context):
     if(papaFile.getNumAnimations() > 0):
 
         if(papaFile.getNumAnimations() > 1):
-            print("Warn: Importer does not support multiple animations in a single file.\nOnly the first animation will be imported.")
+            print("Warning: Importer does not support multiple animations in a single file.\nOnly the first animation will be imported.")
 
         animation = papaFile.getAnimation(0)
 
@@ -317,6 +353,10 @@ def load_papa(properties, context):
                 for i in range(4):
                     curvesRot[i].keyframe_points.insert(frame=frame,value=currentBone.getRotation(frame)[i])
 
+def papaTextureFromMaterial(papaFile: PapaFile, material: PapaMaterial, paramName:str):
+    param = material.getTextureParamByName(papaFile, paramName)
+    if param:
+        return papaFile.getTexture(param.getTextureIndex())
 
 def blenderTextureFromMaterial(papaFile: PapaFile, material: PapaMaterial, paramName: str, textureMap=None):
     try:
@@ -332,6 +372,8 @@ def blenderTextureFromMaterial(papaFile: PapaFile, material: PapaMaterial, param
         print("Error finding texture for parameter "+paramName+". Skipping. ("+str(e)+")")
 
 def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVertexBuffer):
+    # Every face in PA is smooth shaded, what matters is the vertex normals.
+    # For blender, if the vertex normals from the data do not match the face normal, it should be smooth shaded
     polygons = blenderMesh.data.polygons
     cmp = vectorsEqualWithinTolerance
     for i in range(0,iBuffer.getNumIndices(),3):
@@ -346,7 +388,7 @@ def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVert
 def vectorsEqualWithinTolerance(v1, v2, tolerance):
     return abs(v1[0]-v2[0]) < tolerance and abs(v1[1]-v2[1]) < tolerance and abs(v1[2]-v2[2]) < tolerance
 
-def extractTexture(filepath, append, textureMap):
+def extractTexture(filepath, append, textureMap, properties):
     idx = filepath.rfind('.')
     if(idx==-1):
         idx = len(filepath)
@@ -354,11 +396,16 @@ def extractTexture(filepath, append, textureMap):
     right = filepath[idx:]
 
     target = left + append + right
+
+    if not properties.isImportTextures():
+        return PapaTexture(append,-1,False,-1,-1,[],filepath=target)
+
     if not path.isfile(target): # couldn't find the texture
         return None
 
     textureFile = PapaFile(target)
-    print("Auto imported texture file "+target)
+    print("Auto imported texture file "+target+":")
+    print(textureFile.getTexture(0))
 
     if(textureFile.getNumTextures()>0):
         texture = textureFile.getTexture(0) # only import the first
@@ -366,12 +413,18 @@ def extractTexture(filepath, append, textureMap):
         return createImageFromData(name,texture.getImageData(),texture.getWidth(),texture.getHeight(), texture.getSRGB(), texture.getFilepath(), texMap=textureMap)
     return None
 
+def applyTexturePathsFromData(blenderMaterial, diffuse:PapaTexture, mask:PapaTexture, material:PapaTexture, normal:PapaTexture):
+    if diffuse:
+        blenderMaterial[PapaExportMaterial.TEXTURE_EXTENSTION] = diffuse.getFilepath()
+    if mask:
+        blenderMaterial[PapaExportMaterial.MASK_EXTENSION] = mask.getFilepath()
+    if material:
+        blenderMaterial[PapaExportMaterial.MATERIAL_EXTENSION] = material.getFilepath()
+    if normal:
+        blenderMaterial[PapaExportMaterial.NORMAL_EXTENSTION] = normal.getFilepath()
+
 def applyTexture(blenderMaterial, diffuse, mask, material, normal, unit):
-    if unit:
-        applyTextureSolid(blenderMaterial, diffuse, mask, material) # Unit shader
-    else:
-        applyTextureTextured(blenderMaterial, diffuse, material, normal) # CSG shader
-    
+
     if diffuse:
         blenderMaterial[PapaExportMaterial.TEXTURE_EXTENSTION] = diffuse[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION]
     if mask:
@@ -380,6 +433,11 @@ def applyTexture(blenderMaterial, diffuse, mask, material, normal, unit):
         blenderMaterial[PapaExportMaterial.MATERIAL_EXTENSION] = material[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION]
     if normal:
         blenderMaterial[PapaExportMaterial.NORMAL_EXTENSTION] = normal[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION]
+
+    if unit:
+        applyTextureSolid(blenderMaterial, diffuse, mask, material) # Unit shader
+    else:
+        applyTextureTextured(blenderMaterial, diffuse, material, normal) # CSG shader
     
     # set the shading to be material preview if it's not already
     # https://blender.stackexchange.com/a/124427
@@ -800,8 +858,13 @@ def createMeshFromData(name: str, vBuffer: PapaVertexBuffer, iBuffer: PapaIndexB
     
     components = transform.decompose()
 
+    euler = components[1].to_euler()
+    euler[0] = euler[0]
+    euler[1] = euler[1]
+    euler[2] = euler[2]
+
     ob.location=list(components[0].to_tuple())
-    ob.rotation_quaternion = components[1]
+    ob.rotation_euler = euler
     ob.scale = list(components[2].to_tuple())
 
     # Create mesh from given verts, faces.
@@ -838,7 +901,7 @@ def getCollection(context, item):
 def createImageFromData(imageName, pixels, width, height, srgb, filepath, texMap = None): # assumed data is in RGBA byte array (as floats)
     img = bpy.data.images.new(imageName, width, height,alpha=True)
     img.pixels = pixels
-    img.pack() # by packing the data, we can edit the name colour space
+    img.pack() # by packing the data, we can edit the colour space name
     if not srgb:
         img.colorspace_settings.name = "Linear"
     img[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION] = filepath
@@ -854,5 +917,6 @@ def load(operator,context,properties):
     if result:
         operator.report({result[0]}, result[1])
         return {'CANCELLED'}
+    operator.report({"INFO"},"Done in "+str(int(t*1000)) + "ms")
 
     return {'FINISHED'}

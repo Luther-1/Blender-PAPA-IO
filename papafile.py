@@ -1,27 +1,34 @@
+# The MIT License
+# 
 # Copyright (c) 2013, 2014  Raevn
 # Copyright (c) 2021        Marcus Der      marcusder@hotmail.com
 #
-# ##### BEGIN GPL LICENSE BLOCK #####
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
-# ##### END GPL LICENSE BLOCK #####
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
+import ctypes
 import struct
 from pathlib import Path
 from mathutils import * # has vectors and quaternions
-from math import ceil
+from math import ceil, log2
+import platform
+from os import path
+from array import array
 
 class PapaComponent: # abstract interface meant for compiling
     def build(self):
@@ -79,6 +86,7 @@ class PapaString(PapaComponent):
 
 class PapaTexture(PapaComponent):
     formatMap = {
+        -1:"UNKNOWN",
         1:"R8G8B8A8",
 		2:"R8G8B8X8",
 		3:"B8G8R8A8",
@@ -171,11 +179,9 @@ class PapaIndexBuffer(PapaComponent):
         # body
         data = self.getBodyBytes()
         if(self.__format == 0): # short
-            for x in range(len(self.__indices)):
-                struct.pack_into('<H', data, 2 * x, self.__indices[x])
+            struct.pack_into('<'+'H'*len(self.__indices), data, 0, *self.__indices) # * unpacks the elements of the iterable into individual arguments
         else: # int
-            for x in range(len(self.__indices)):
-                struct.pack_into('<I', data, 4 * x, self.__indices[x])
+            struct.pack_into('<'+'I'*len(self.__indices), data, 0, *self.__indices)
         
         struct.pack_into('<BxxxIq', self.getHeaderBytes(), 0, self.__format,len(self.__indices),self.bodySize())
     
@@ -888,6 +894,33 @@ class PapaAnimation(PapaComponent):
         return ceilEight(2 * self.getNumBones()) + (28 * self.getNumBones() * self.getNumFrames())
 
 class PapaFile:
+
+    textureLibrary = None
+
+    @classmethod
+    def loadTextureLibrary(cls):
+        # Code sourced from https://stackoverflow.com/questions/50168719/python-load-library-from-different-platform-windows-linux-or-os-x
+        platName = platform.uname()[0]
+        libName = ""
+        if(platName == "Windows"):
+            libName = "PTex.dll"
+        elif(platName == "Linux"):
+            libName = "PTex.so"
+        else:
+            libName = "PTex.dylib"
+        libPath = path.dirname(path.abspath(__file__)) + path.sep + libName
+        if path.exists(libPath):
+            try:
+                cls.textureLibrary = ctypes.cdll.LoadLibrary(libPath)
+                cls.textureLibrary.argTypes = (ctypes.c_char_p, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.POINTER(ctypes.c_float)))
+                cls.textureLibrary.resType = None
+                print("Papa IO: Texture library "+libName+" successfully loaded.")
+                return
+            except Exception as e:
+                print("Papa IO: Error loading texture library "+libName+", Python decompiler will be used. ("+str(e)+")")
+                return
+        print("Papa IO: Texture library "+libName+" not found, Python decompiler will be used.")
+
     def __init__(self, filepath: str = None, verbose = False, readLinked = False):
         self.__verbose = verbose
         self.__filepath = filepath
@@ -1056,8 +1089,6 @@ class PapaFile:
             offsetTexture = papaTexturesHeader[x][6]
 
             if(dataSize == -1 or offsetTexture == -1): # the texture is linked, see if we can find the source...
-                if not self.__readLinked:
-                    continue
                 path = Path(self.__filepath)
                 lastPath = None
                 while path != lastPath and path.name.lower() != "pa" and path.name.lower() != "pa_ex1": # keep looking up the path until we are in the 'pa' or 'pa_ex1' directory
@@ -1072,10 +1103,23 @@ class PapaFile:
                     continue
 
                 path = path.parent # move into 'media' directory (deferring this allows for better mod file support)
-                subfile = PapaFile(str(path) + self.getString(nameIndex))
+                fullPath = str(path) + self.getString(nameIndex)
+
+                if not self.__readLinked: # keep the texture stub anyway
+                    self.__stringTable.append(PapaString(fullPath))
+                    tex = PapaTexture(len(self.__stringTable)-1,-1,False,-1,-1,[], fullPath)
+                    self.__textureTable.append(tex)
+                    self.logv("(texture stub)")
+                    self.logv(self.__textureTable[len(self.__textureTable) - 1])
+                    continue
+
+                subfile = PapaFile(fullPath)
                 if subfile.getNumTextures() != 1:
-                    self.__textureTable.append(None)
-                    self.logv("Linked file for texture \"" + self.getString(nameIndex) + "\" malformed. Ignoring")
+                    self.__stringTable.append(PapaString(fullPath))
+                    tex = PapaTexture(len(self.__stringTable)-1,-1,False,-1,-1,[], fullPath)
+                    self.__textureTable.append(tex)
+                    self.logv("Linked file for texture \"" + self.getString(nameIndex) + "\" malformed. Creating texture stub")
+                    self.logv(tex)
                     continue
                 
                 # copy the data to a new PapaTexture and create a new string for it (mildly jank)
@@ -1090,92 +1134,125 @@ class PapaFile:
                 continue
 
             numberOfPixels = width * height
-            numberOfBytes = numberOfPixels * 4 # (destination, not source)
+            numberOfValues = numberOfPixels * 4 # (destination, not source)
             texData = []
 
-            # for some reason blender flips this data across the x axis, so we must invert y
-            file.seek(offsetTexture)
-            if(formatIndex == 1): # RGBA8888
-                texData = struct.unpack('<' + 'B' * numberOfBytes,file.read(numberOfBytes))
-                for y in range(height):
-                    for x in range(width):
-                        i = x + (heightZero - y) * width 
-                        texData[i]/=255
-            elif formatIndex == 2: # RGBX8888
-                texData = struct.unpack('<' + 'B' * numberOfBytes,file.read(numberOfBytes)) # ignore alpha data
-                for y in range(height):
-                    for x in range(width):
-                        i = x + (heightZero - y) * width 
-                        texData[i]/=255
-                        texData[i+1]/=255
-                        texData[i+2]/=255
-                        texData[i+3]=1
-            elif formatIndex == 3: #BGRA8888
-                texData = struct.unpack('<' + 'B' * numberOfBytes,file.read(numberOfBytes))
-                for y in range(height):
-                    for x in range(width):
-                        i = x + (heightZero - y) * width 
-                        t = texData[i]
-                        texData[i] = texData[i+2]
-                        texData[i+2] = t
-                        texData[i]/=255
-                        texData[i+1]/=255
-                        texData[i+2]/=255
-                        texData[i+3]/=255
-            elif formatIndex == 4: # DXT1
-                texData = [None] * numberOfBytes
+            if PapaFile.textureLibrary:
+                file.seek(offsetTexture)
+                if(formatIndex==13): # R8
+                    rawData = file.read(numberOfPixels)
+                elif formatIndex == 1 or formatIndex == 2 or formatIndex == 3:
+                    rawData = file.read(numberOfValues)
+                elif formatIndex == 4: # DXT1
+                    rawData = file.read(ceil(width/4) * ceil(height / 4) * 8) # 8 bytes per block
+                elif formatIndex == 6: # DXT5
+                    rawData = file.read(ceil(width/4) * ceil(height / 4) * 16) # 16 bytes per block
+                
+                if (numberOfValues & (numberOfValues-1)) == 0: # test if the number of values is a power of two
+                    # if it is, we can allocate our array faster using this method (don't ask why this is faster because i don't know)
+                    texData = array('f',[0.0])
+                    for _ in range(int(log2(numberOfValues))):
+                        texData.extend(texData)
+                else:
+                    texData = array('f',[0.0] * numberOfValues)
+                dataPointer = texData.buffer_info()[0]
+                PapaFile.textureLibrary.decodeTexture(ctypes.c_char_p(rawData), ctypes.c_int(width), ctypes.c_int(height),
+                    ctypes.c_int(formatIndex), ctypes.cast(dataPointer,ctypes.POINTER(ctypes.c_float)))
+            else:
+                # for some reason blender flips this data across the x axis, so we must invert y
+                file.seek(offsetTexture)
+                if formatIndex == 1: # RGBA8888
+                    texData = [None] * numberOfValues
+                    tempData = struct.unpack('<' + 'B' * numberOfValues,file.read(numberOfValues))
+                    for y in range(height):
+                        for x in range(width):
+                            i = (x + (heightZero - y) * width) * 4
+                            i2 = (x + y * width) * 4
+                            texData[i] = tempData[i2] / 255
+                            texData[i+1] = tempData[i2+1] / 255
+                            texData[i+2] = tempData[i2+2] / 255
+                            texData[i+3] = tempData[i2+3] / 255
+                elif formatIndex == 2: # RGBX8888
+                    texData = [None] * numberOfValues
+                    tempData = struct.unpack('<' + 'B' * numberOfValues,file.read(numberOfValues)) # ignore alpha data
+                    for y in range(height):
+                        for x in range(width):
+                            i = (x + (heightZero - y) * width) * 4
+                            i2 = (x + y * width) * 4
+                            texData[i]=tempData[i2]/255
+                            texData[i+1]=tempData[i2+1]/255
+                            texData[i+2]=tempData[i2+2]/255
+                            texData[i+3]=1
+                elif formatIndex == 3: #BGRA8888
+                    texData = [None] * numberOfValues
+                    tempData = struct.unpack('<' + 'B' * numberOfValues,file.read(numberOfValues))
+                    for y in range(height):
+                        for x in range(width):
+                            i = (x + (heightZero - y) * width) * 4
+                            i2 = (x + y * width) * 4
+                            texData[i]=tempData[i2]/255
+                            texData[i+1]=tempData[i2+1]/255
+                            texData[i+2]=tempData[i2+2]/255
+                            texData[i+3]=tempData[i2+3]/255
+                            t = texData[i]
+                            texData[i] = texData[i2+2]
+                            texData[i+2] = t
+                elif formatIndex == 4: # DXT1
+                    texData = [None] * numberOfValues
 
-                for y in range(0,height,4):
-                    for x in range(0,width,4):
-                        colourBuffer = struct.unpack('<BBBB',file.read(4))
-                        colours = self.__dxtDecodeColourMap(colourBuffer)
+                    for y in range(0,height,4):
+                        for x in range(0,width,4):
+                            colourBuffer = struct.unpack('<BBBB',file.read(4))
+                            colours = self.__dxtDecodeColourMap(colourBuffer)
 
-                        bits = struct.unpack('<I',file.read(4))[0]
-                        for yy in range(4):
-                            for xx in range(4):
-                                colourIndex = bits & 0b11
-                                if yy + y < height and xx + x < width: # copy our colour data into the array
-                                    idx = (xx + x + (heightZero - (yy + y)) * width) * 4
-                                    col = colours[colourIndex]
-                                    texData[idx] = col[0]
-                                    texData[idx+1] = col[1]
-                                    texData[idx+2] = col[2]
-                                    texData[idx+3] = 1
-                                bits>>=2
-            elif formatIndex == 6: # DXT5
+                            bits = struct.unpack('<I',file.read(4))[0]
+                            for yy in range(4):
+                                for xx in range(4):
+                                    colourIndex = bits & 0b11
+                                    if yy + y < height and xx + x < width: # copy our colour data into the array
+                                        idx = (xx + x + (heightZero - (yy + y)) * width) * 4
+                                        col = colours[colourIndex]
+                                        texData[idx] = col[0]
+                                        texData[idx+1] = col[1]
+                                        texData[idx+2] = col[2]
+                                        texData[idx+3] = 1
+                                    bits>>=2
+                elif formatIndex == 6: # DXT5
 
-                texData = [None] * numberOfBytes
+                    texData = [None] * numberOfValues
 
-                for y in range(0,height,4):
-                    for x in range(0,width,4):
+                    for y in range(0,height,4):
+                        for x in range(0,width,4):
 
-                        alphaBuffer = struct.unpack('<BBBBBBBB',file.read(8))
-                        alphaValues = self.__dxtDecodeAlphaMap(alphaBuffer)
+                            alphaBuffer = struct.unpack('<BBBBBBBB',file.read(8))
+                            alphaValues = self.__dxtDecodeAlphaMap(alphaBuffer)
 
-                        colourBuffer = struct.unpack('<BBBB',file.read(4))
-                        colours = self.__dxtDecodeColourMap(colourBuffer)
+                            colourBuffer = struct.unpack('<BBBB',file.read(4))
+                            colours = self.__dxtDecodeColourMap(colourBuffer)
 
-                        bits = struct.unpack('<I',file.read(4))[0]
-                        for yy in range(4):
-                            for xx in range(4):
-                                colourIndex = bits & 0b11
-                                if yy + y < height and xx + x < width: # copy our colour data into the array
-                                    idx = (xx+x + (heightZero-(yy+y)) * width) * 4
-                                    col = colours[colourIndex]
-                                    texData[idx] = col[0]
-                                    texData[idx+1] = col[1]
-                                    texData[idx+2] = col[2]
-                                    texData[idx+3] = alphaValues[xx + yy * 4]
-                                bits>>=2
-            elif formatIndex == 13: # R8
-                temp = struct.unpack('<' + 'B' * numberOfPixels,file.read(numberOfPixels))
-                texData = [None] * numberOfBytes
-                for i in range(numberOfPixels):
-                    idx = i * 4
-                    texData[idx] = temp[i] # copy just the red channel
-                    texData[idx + 1] = 0 # G
-                    texData[idx + 2] = 0 # B
-                    texData[idx + 3] = 1 # A
+                            bits = struct.unpack('<I',file.read(4))[0]
+                            for yy in range(4):
+                                for xx in range(4):
+                                    colourIndex = bits & 0b11
+                                    if yy + y < height and xx + x < width: # copy our colour data into the array
+                                        idx = (xx+x + (heightZero-(yy+y)) * width) * 4
+                                        col = colours[colourIndex]
+                                        texData[idx] = col[0]
+                                        texData[idx+1] = col[1]
+                                        texData[idx+2] = col[2]
+                                        texData[idx+3] = alphaValues[xx + yy * 4]
+                                    bits>>=2
+                elif formatIndex == 13: # R8
+                    temp = struct.unpack('<' + 'B' * numberOfPixels,file.read(numberOfPixels))
+                    texData = [None] * numberOfValues
+                    for y in range(height):
+                        for x in range(width):
+                            idx = x + (heightZero - y) * width * 4
+                            idx2 = x + y * width
+                            texData[idx] = temp[idx2] / 255 # copy just the red channel
+                            texData[idx + 1] = 0 # G
+                            texData[idx + 2] = 0 # B
+                            texData[idx + 3] = 1 # A
             self.__textureTable.append(PapaTexture(nameIndex, formatIndex, srgb, width, height, texData, self.__filepath))
             self.logv(self.__textureTable[len(self.__textureTable) - 1])
 
@@ -1280,7 +1357,7 @@ class PapaFile:
             if(format == 0):
                 self.__indexBufferTable.append(PapaIndexBuffer(0,struct.unpack('<'+'H'*numberOfIndices,file.read(dataSize))))
             elif(format == 1):
-                self.__indexBufferTable.append(PapaIndexBuffer(1,struct.unpack('<'+'H'*numberOfIndices,file.read(dataSize))))
+                self.__indexBufferTable.append(PapaIndexBuffer(1,struct.unpack('<'+'I'*numberOfIndices,file.read(dataSize))))
             else:
                 raise IOError('Invalid index buffer format for index buffer '+str(x))
             self.logv(self.__indexBufferTable[len(self.__indexBufferTable) - 1])
@@ -1576,34 +1653,50 @@ class PapaFile:
         return len(self.__stringTable) - 1
 
     def addTexture(self, obj:PapaTexture):
+        if obj in self.__textureTable:
+            return self.__textureTable.index(obj)
         self.__textureTable.append(obj)
         return len(self.__textureTable) - 1
 
     def addVertexBuffer(self, obj:PapaVertexBuffer):
+        if obj in self.__vertexBufferTable:
+            return self.__vertexBufferTable.index(obj)
         self.__vertexBufferTable.append(obj)
         return len(self.__vertexBufferTable) - 1
 
     def addIndexBuffer(self, obj:PapaIndexBuffer):
+        if obj in self.__indexBufferTable:
+            return self.__indexBufferTable.index(obj)
         self.__indexBufferTable.append(obj)
         return len(self.__indexBufferTable) - 1
 
     def addMaterial(self, obj:PapaMaterial):
+        if obj in self.__materialTable:
+            return self.__materialTable.index(obj)
         self.__materialTable.append(obj)
         return len(self.__materialTable) - 1
 
     def addMesh(self, obj:PapaMesh):
+        if obj in self.__meshTable:
+            return self.__meshTable.index(obj)
         self.__meshTable.append(obj)
         return len(self.__meshTable) - 1
 
     def addSkeleton(self, obj:PapaSkeleton):
+        if obj in self.__skeletonTable:
+            return self.__skeletonTable.index(obj)
         self.__skeletonTable.append(obj)
         return len(self.__skeletonTable) - 1
 
     def addModel(self, obj:PapaModel):
+        if obj in self.__modelTable:
+            return self.__modelTable.index(obj)
         self.__modelTable.append(obj)
         return len(self.__modelTable) - 1
 
     def addAnimation(self, obj:PapaAnimation):
+        if obj in self.__animationTable:
+            return self.__animationTable.index(obj)
         self.__animationTable.append(obj)
         return len(self.__animationTable) - 1
 
@@ -1682,3 +1775,5 @@ def ceilEight(num):
 
 def ceilNextEight(num):
     return ceilEight(num + 1)
+
+PapaFile.loadTextureLibrary()
