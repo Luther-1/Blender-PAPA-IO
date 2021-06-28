@@ -391,7 +391,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
             if knownVertices:
                 # this region claims to have vertex data for this location,
                 # however, there is also the possibility of UVs not aligning, so now we need to check if UVs align
-                normal = vertexData[0][poly.index][idx]
+                normal = vectorToImmutableMapping(vertexData[0][poly.index][idx])
                 uv1 = uvMap[0][poly.index][idx]
                 foundVertex = False
                 if properties.isCSG(): # respect shadow map as well
@@ -449,7 +449,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
             # register in the bucket
             if not bucket.get(idx,False):
                 bucket[idx] = []
-            bucket[idx].append( (vertexIndex, texCoord1, texCoord2, normal) )
+            bucket[idx].append( (vertexIndex, texCoord1, texCoord2, vectorToImmutableMapping(normal)) )
     vertexFormat = 10 if properties.isCSG() else 8
     vBuffer = PapaVertexBuffer(vertexFormat,vertexList)
     print(vBuffer)
