@@ -386,7 +386,7 @@ def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVert
             face.use_smooth = True
 
 def vectorsEqualWithinTolerance(v1, v2, tolerance):
-    return abs(v1[0]-v2[0]) < tolerance and abs(v1[1]-v2[1]) < tolerance and abs(v1[2]-v2[2]) < tolerance
+    return abs(v1[0]-v2[0]) <= tolerance and abs(v1[1]-v2[1]) <= tolerance and abs(v1[2]-v2[2]) <= tolerance
 
 def extractTexture(filepath, append, textureMap, properties):
     idx = filepath.rfind('.')
