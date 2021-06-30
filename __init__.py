@@ -223,7 +223,7 @@ class PapaExportMaterialList(bpy.types.UIList):
 
 class PapaExportProperties:
     def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
-                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool):
+                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool,merge:bool):
         self.__filepath = filepath
         self.__targetObject = target
         self.__isCSG = isCSG
@@ -236,6 +236,7 @@ class PapaExportProperties:
         self.__ignoreRoot = ignoreRoot
         self.__ignoreHidden = ignoreHidden
         self.__ignoreNoData = ignoreNoData
+        self.__merge = merge
 
     def getFilepath(self) -> str:
         return self.__filepath
@@ -266,6 +267,9 @@ class PapaExportProperties:
 
     def isIgnoreNoData(self):
         return self.__ignoreNoData
+    
+    def isMerge(self):
+        return self.__merge
 
 class ExportPapaUISettings(PropertyGroup):
 
@@ -273,6 +277,8 @@ class ExportPapaUISettings(PropertyGroup):
         + " shaded faces which are marked sharp as disconnected",default=True)
     compress: BoolProperty(name="Join Similar Polygons", description="Joins the data of any faces that have the same normals to reduce file size."
         + " Does nothing if the face is smooth shaded",default=True)
+    merge: BoolProperty(name="Merge Meshes", description="Causes the selected meshes with the same skeleton to be written to the "
+        + "file as one model instead of many. Support for >32 bones")
     isCSG : BoolProperty(name="Export as CSG",description="Exports the selected object as a CSG instead of as a unit. Cannot be used if multiple meshes are selected")
 
     shaderOptions = [
@@ -335,6 +341,9 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
         row = l.row()
         row.prop(properties,"ignoreHidden")
+
+        row = l.row()
+        row.prop(properties,"merge")
 
         row = l.row()
         row.prop(properties,"isCSG")
@@ -401,7 +410,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
-            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData)
+            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):

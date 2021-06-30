@@ -497,6 +497,9 @@ class PapaSkeleton(PapaComponent):
     
     def getBone(self, ind) -> PapaBone:
         return self.__bones[ind]
+
+    def setBoneList(self, bones:list):
+        self.__bones = bones
     
     def __str__(self):
         return "PapaSkeleton with " + str(self.getNumBones()) + " bone(s)"
@@ -737,6 +740,9 @@ class PapaModel(PapaComponent):
     
     def getMeshBinding(self, ind) -> PapaMeshBinding:
         return self.__meshBindings[ind]
+    
+    def addMeshBinding(self, meshBinding):
+        self.__meshBindings.append(meshBinding)
     
     def __str__(self):
         return "PapaModel:\n\tName Index: "+str(self.getNameIndex())+"\n\tSkeleton Index: "+str(self.getSkeletonIndex()) \
