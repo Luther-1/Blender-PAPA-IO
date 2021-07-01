@@ -378,9 +378,12 @@ def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBo
         if bonesWithWeights[papaFile.getString(bone.getNameIndex())]:
             numBonesWithWeights+=1
     
+    if skeleton.getNumBones()>256:
+        raise PapaBuildException("Skeleton for mesh \""+mesh.name+"\" exceeds maxiumum bone count ("+str(skeleton.getNumBones())+">256).")
+
     if numBonesWithWeights > 32:
         PapaExportNotifications.getInstance().addNotification("Mesh \"" +mesh.name+"\" exceeds maximum bones with weight links ("+str(numBonesWithWeights) + ">32).")
-    
+
     if skeleton.getNumBones() > 32:
         # re order the bones in order to make any bones with weight links be in the first 32
         print("Remapping skeleton... ("+str(numBonesWithWeights) +" skinned bone(s) found)")
