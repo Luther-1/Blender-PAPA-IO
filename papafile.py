@@ -941,10 +941,11 @@ class PapaFile:
                 return
         print("Papa IO: Texture library "+libName+" not found, Python decompiler will be used.")
 
-    def __init__(self, filepath: str = None, verbose = False, readLinked = False):
+    def __init__(self, filepath: str = None, verbose = False, readLinked = False, signature = ""):
         self.__verbose = verbose
         self.__filepath = filepath
         self.__readLinked = readLinked
+        self.__signature = signature
         self.__setupData()
         if filepath != None:
             file = open(filepath, 'rb')
@@ -976,9 +977,16 @@ class PapaFile:
     def __parseData(self, file):
         #PapaFile, I=UINT(32), H=USHORT(16), q=LONG(64)
         header = struct.unpack('<IHHHHHHHHHHHHHHqqqqqqqqq', file.read(104))
-        signature = header[0]
-        if signature != 0x50617061:
-            raise IOError('File signature does not match papa file signatue')
+        papaCheck = header[0]
+        if papaCheck != 0x50617061:
+            raise IOError('File signature does not match papa file signature')
+
+        file.seek(26)
+        self.__signature = file.read(6)
+        if self.__signature[0] == 0:
+            self.__signature = ""
+        else:
+            self.__signature = self.__signature.decode('utf-8')
 
         self.__numberOfStrings = header[3]
         self.__numberOfTextures = header[4]
@@ -1605,6 +1613,9 @@ class PapaFile:
 
             self.__animationTable.append(PapaAnimation(nameIndex, numBones, numFrames, fpsNumerator, fpsDenominator, animationBones))
             self.logv(self.__animationTable[len(self.__animationTable) - 1])
+
+    def getSignature(self):
+        return self.__signature
     
     def getNumStrings(self) -> int:
         return len(self.__stringTable)
@@ -1755,8 +1766,9 @@ class PapaFile:
         return bytes(data)
 
     def __buildHeader(self, header):
-        struct.pack_into('<Ihhhhhhhhhhhxxxxxx',header,0,0x50617061,0,3,self.getNumStrings(), self.getNumTextures(), self.getNumVertexBuffers(),
-            self.getNumIndexBuffers(),self.getNumMaterials(), self.getNumMeshes(), self.getNumSkeletons(), self.getNumModels(), self.getNumAnimations())
+        struct.pack_into('<IhhhhhhhhhhhBBBBBB',header,0,0x50617061,0,3,self.getNumStrings(), self.getNumTextures(), self.getNumVertexBuffers(),
+            self.getNumIndexBuffers(),self.getNumMaterials(), self.getNumMeshes(), self.getNumSkeletons(), self.getNumModels(), self.getNumAnimations(),
+            *self.__signature)
 
     def __buildComponent(self, componentList, data, position): # position is the current write position of the byte array
         currentSize = 0 # used to offset from the header

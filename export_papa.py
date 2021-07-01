@@ -101,7 +101,7 @@ def write_papa(properties, context, operator):
     activeMode = bpy.context.active_object.mode if activeObject else None
     
     targetObjects = properties.getTargets()
-    papaFile = PapaFile() # make the papafile container
+    papaFile = PapaFile(signature=properties.getSignature()) # make the papafile container
 
     try:
         for obj in targetObjects:

@@ -24,7 +24,7 @@
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (2, 90, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
@@ -223,7 +223,7 @@ class PapaExportMaterialList(bpy.types.UIList):
 
 class PapaExportProperties:
     def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
-                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool,merge:bool):
+                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool,merge:bool, signature:str):
         self.__filepath = filepath
         self.__targetObject = target
         self.__isCSG = isCSG
@@ -237,6 +237,7 @@ class PapaExportProperties:
         self.__ignoreHidden = ignoreHidden
         self.__ignoreNoData = ignoreNoData
         self.__merge = merge
+        self.__signature = signature
 
     def getFilepath(self) -> str:
         return self.__filepath
@@ -271,6 +272,9 @@ class PapaExportProperties:
     def isMerge(self):
         return self.__merge
 
+    def getSignature(self):
+        return self.__signature
+
 class ExportPapaUISettings(PropertyGroup):
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"
@@ -294,6 +298,8 @@ class ExportPapaUISettings(PropertyGroup):
     ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file."
         + " (Edit bones for model export, pose bones for animation export)",default=True)
     ignoreNoData: BoolProperty(name="Skip Bones With No Data", description="Bones that have no animation data associated with them will not be written.",default=True)
+
+    signature: StringProperty(name="Signature",description="A six letter or less string to embed into the file that for purposes of crediting.",maxlen=6,subtype='BYTE_STRING')
 
 class ExportPapa(bpy.types.Operator, ExportHelper):
     """Export to PAPA file format (.papa)"""
@@ -358,6 +364,9 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         row.template_list(PapaExportMaterialList.bl_idname,"",bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST",
             bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST_ACTIVE",rows = len(ExportPapa.materialList))
         row.enabled = properties.isCSG
+
+        row = l.row()
+        row.prop(properties,"signature")
     
     def getObject(self): # takes the source string and turns it into a blender object
         if self.target_object_string == ExportPapaMenu.EXPORT_SELECTED_STRING:
@@ -410,7 +419,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
-            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge)
+            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.signature)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):

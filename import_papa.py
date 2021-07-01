@@ -66,7 +66,10 @@ def load_papa(properties, context):
 
             model = papaFile.getModel(x)
 
-            collection = bpy.data.collections.new(papaFile.getString(model.getNameIndex()))
+            collectionName = papaFile.getString(model.getNameIndex())
+            if papaFile.getSignature()!="":
+                collectionName+=" ("+papaFile.getSignature()+")"
+            collection = bpy.data.collections.new(collectionName)
             bpy.context.scene.collection.children.link(collection)
             meshGroups = []
             currentMeshes = []
@@ -78,9 +81,14 @@ def load_papa(properties, context):
                 iBuffer = papaFile.getIndexBuffer(mesh.getIndexBufferIndex())
                 # model to scene or mesh to model often cause CSGs to be imported far off of the center.
                 blenderMesh = createMeshFromData(papaFile.getString(meshBinding.getNameIndex()),vBuffer,iBuffer, model.getModelToScene() @ meshBinding.getMeshToModel())
-
+                
                 meshGroups.append((vBuffer, blenderMesh, meshBinding))
                 currentMeshes.append(blenderMesh)
+
+                # move mesh to new collection
+                currentCollection = getCollection(context,blenderMesh)
+                currentCollection.objects.unlink(blenderMesh)
+                collection.objects.link(blenderMesh)
 
                 # Smooth shading must be done before custom normals
                 shadeSmoothFromData(blenderMesh,iBuffer,vBuffer)
@@ -280,17 +288,12 @@ def load_papa(properties, context):
             # remove doubles
             if properties.isRemoveDoubles():
                 for m in range(len(meshGroups)):
-                    bufferMeshPair = meshGroups[m]
-                    bpy.context.view_layer.objects.active = bufferMeshPair[1]
+                    meshData = meshGroups[m]
+                    bpy.context.view_layer.objects.active = meshData[1]
                     
                     ops.object.mode_set(mode='EDIT')
                     ops.mesh.remove_doubles(threshold=0.0001)
                     ops.object.mode_set(mode='OBJECT')
-                    
-                    # move mesh to new collection
-                    currentCollection = getCollection(context,blenderMesh)
-                    currentCollection.objects.unlink(blenderMesh)
-                    collection.objects.link(blenderMesh)
         
     if(papaFile.getNumAnimations() > 0):
 
