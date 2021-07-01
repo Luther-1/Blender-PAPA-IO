@@ -323,126 +323,7 @@ def createFaceMaterialIslands(mesh):
         materialMap[idx].append(x)
     return materialMap
 
-
-class BoneChildList:
-    def __init__(self, bone:PapaBone, boneIndex):
-        self.__bone = bone
-        self.__boneIndex = boneIndex
-        self.__parentList = None
-        self.__children = []
-
-    def hasChildren(self):
-        return len(self.__children)!=0
-
-    def getChildren(self):
-        return self.__children
-
-    def addChild(self, child):
-        child.setParent(self)
-        self.__children.append(child)
-    
-    def removeChild(self, child):
-        self.__children.remove(child)
-
-    def removeAndGetParentIfEmpty(self):
-        if self.__parentList==None:
-            return None
-
-        self.__parentList.removeChild(self)
-        if self.__parentList.getBoneIndex()==-1 or self.__parentList.hasChildren():
-            return None
-            
-        return self.__parentList
-
-
-    def setParent(self, parentList):
-        self.__parentList = parentList
-    
-    def getBone(self):
-        return self.__bone
-
-    def getBoneIndex(self):
-        return self.__boneIndex
-    
-    def getParentChildList(self):
-        return self.__parentList
-        
-
-def fixSkeleton(papaFile:PapaFile, skeleton: PapaSkeleton, isBonePriority:dict) -> int:
-    # ensure that no bone has a parent that is ahead of the current bone
-    # as well, place all priority bones as far into the list as possible
-    # returns highest index of a priority bone
-    boneList = []
-    for x in range(skeleton.getNumBones()):
-        bone = skeleton.getBone(x)
-        boneList.append(bone)
-
-    # create a tree of parents to children
-    root = BoneChildList(None, -1)
-
-    openList = [root]
-    while len(openList)!=0:
-        current = openList.pop()
-        for bone in boneList:
-            if bone.getParentBoneIndex() == current.getBoneIndex():
-                newChild = BoneChildList(bone,boneList.index(bone))
-                current.addChild(newChild)
-                openList.append(newChild)
-
-    # root is now a tree of all bones
-    # now find all leaf child lists (no children) and add them to a central pool.
-    pool = []
-
-    # perform DFS
-    searchList = [root]
-    while(len(searchList)!=0):
-        element = searchList.pop()
-        if not element.hasChildren():
-            pool.append(element)
-        else:
-            for child in element.getChildren():
-                searchList.append(child)
-    
-    # for each entry in the pool, if it is non priority add itself to ordered list
-    # remove the entry from it's parent, if the parent now has no children, then add it to the pool
-    # repeat until the pool is empty
-    bonesOrdered = []
-    swapList = []
-    force = False
-    changedElements = 0
-    while len(pool)!=0:
-        for element in pool:
-            if force or not isBonePriority.get(papaFile.getString(element.getBone().getNameIndex()),False):
-                changedElements+=1
-                bonesOrdered.insert(0,element.getBone())
-                parent = element.removeAndGetParentIfEmpty()
-                if parent != None:
-                    swapList.append(parent)
-            else:
-                swapList.append(element)
-                
-        if changedElements==0: # out of non priority bones
-            force = True
-        pool = swapList
-        swapList = []
-        changedElements = 0
-
-    # remap the parents
-    for bone in bonesOrdered:
-        oldParentIndex = bone.getParentBoneIndex()
-        if oldParentIndex == -1:
-            continue
-        oldParent = skeleton.getBone(oldParentIndex)
-        bone.setParentIndex(bonesOrdered.index(oldParent))
-    
-    skeleton.setBoneList(bonesOrdered)
-
-    for x in range(len(bonesOrdered)-1,0,-1):
-        if isBonePriority.get(papaFile.getString(bonesOrdered[x].getNameIndex()),False):
-            return x + 1
-    return 0
-
-def createBoneWeightMap(properties, mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBones:dict):
+def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBones:dict):
     # simplifies down the lookup process to be just a vertex index
 
     surrogateMap = {} # bone name -> surrotage index (also surrogate index -> bone index)
@@ -500,23 +381,18 @@ def createBoneWeightMap(properties, mesh, papaFile:PapaFile, skeleton:PapaSkelet
     if numBonesWithWeights > 32:
         PapaExportNotifications.getInstance().addNotification("Mesh \"" +mesh.name+"\" exceeds maximum bones with weight links ("+str(numBonesWithWeights) + ">32).")
     
-    if skeleton.getNumBones() > 32 and not properties.isMerge():
+    if skeleton.getNumBones() > 32:
         # re order the bones in order to make any bones with weight links be in the first 32
-        print("Number of bones exceeds 32, attempting to pack skinned bones first ("+str(numBonesWithWeights) +" skinned bones found)")
-        maxUsed = fixSkeleton(papaFile, skeleton, bonesWithWeights)
-        if(maxUsed < 32):
-            print("Fit all skinned bones into first "+str(maxUsed)+" slots.")
-        elif numBonesWithWeights <= 32:
-            PapaExportNotifications.getInstance().addNotification("Failed to pack weight linked bones into 32 slots for mesh \"" +mesh.name+"\""
-            +" ("+str(maxUsed) + ">32 slots).")
-
-    if properties.isMerge():
-        # build surrogate map
+        print("Remapping skeleton... ("+str(numBonesWithWeights) +" skinned bone(s) found)")
         surrogateIndex = 0
-        for x in range(skeleton.getNumBones()):
+        for x in range(32, skeleton.getNumBones()):
             bone = skeleton.getBone(x)
             boneName = papaFile.getString(bone.getNameIndex())
             if bonesWithWeights[boneName]:
+                # find first bone that you can use as a surrogate
+                while bonesWithWeights[papaFile.getString(skeleton.getBone(surrogateIndex).getNameIndex())] and surrogateIndex < 32:
+                    surrogateIndex+=1
+                
                 surrogateMap[boneName] = surrogateIndex
                 surrogateMap[surrogateIndex] = x
                 surrogateIndex+=1
@@ -820,14 +696,6 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
         parentIndex = boneMap[editBoneParent(properties, editBone).name]
         bone.setParentIndex(parentIndex)
     
-    # insert the 32 surrogate bones
-    if properties.isMerge():
-        for _ in range(32):
-            boneList.insert(0,PapaBone(papaFile.addString(PapaString("__BONE_SURROGATE")),-1,Vector( (0,0,0) ),Quaternion( (0,1,0,0) ), Matrix(), Matrix()))
-        for x in range(32, len(boneList)):
-            if boneList[x].getParentBoneIndex()!=-1:
-                boneList[x].setParentIndex(boneList[x].getParentBoneIndex()+32)
-    
     bpy.ops.object.mode_set(mode=lastMode)
     skeleton = PapaSkeleton(boneList)
     PapaExportCache.getInstance().addSkeleton(armature, (skeleton, hiddenBones, armature))
@@ -954,7 +822,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     boneWeightMap = {}
     surrogateMap = {}
     if papaSkeleton != None:
-        boneWeightMap, surrogateMap = createBoneWeightMap(properties, mesh, papaFile, papaSkeleton, hiddenBones)
+        boneWeightMap, surrogateMap = createBoneWeightMap(mesh, papaFile, papaSkeleton, hiddenBones)
     skeletonIndex = -1
     if papaSkeleton:
         skeletonIndex = papaFile.addSkeleton(papaSkeleton)
@@ -990,13 +858,14 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     print(meshBinding)
     papaMeshBindings = [meshBinding]
 
-    if not properties.isMerge() or not PapaExportCache.getInstance().getMergeData(armature):
+    if armature == None or not properties.isMerge() or not PapaExportCache.getInstance().getMergeData(armature):
         print("Generating Models...")
         papaModel = PapaModel(nameIndex,skeletonIndex,mesh.matrix_world,papaMeshBindings)
         print(papaModel)
         papaFile.addModel(papaModel)
         PapaExportCache.getInstance().addMergeData(armature, papaModel)
     else:
+        print("Using previous model for multi mesh")
         papaModel = PapaExportCache.getInstance().getMergeData(armature)
         papaModel.addMeshBinding(papaMeshBindings[0])
 
