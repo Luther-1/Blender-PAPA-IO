@@ -712,9 +712,23 @@ class PapaMeshBinding(PapaComponent):
     
     def __str__(self):
         boneMapString = ""
-        for x in range(len(self.__boneMap)):
+        limit = 5
+        x = 0
+        total = len(self.__boneMap)
+        while x < total:
             boneMapString+="\n\t\t" + str(x)+ " -> " + str(self.__boneMap[x])
-
+            same = x < total-limit
+            for i in range(x,min(total,x+limit)):
+                if self.__boneMap[i] != i:
+                    same = False
+                    break
+            if same:
+                count = 0
+                while x < total - 2 and self.__boneMap[x] == x:
+                    count+=1
+                    x+=1
+                boneMapString+="\n\t\t..."
+            x+=1
         
         return "PapaMeshBinding: \n\tName Index: " + str(self.getNameIndex()) + "\n\tMesh Index: "\
                 + str(self.getMeshIndex()) + ("\n\tBone Mappings:"+boneMapString if len(self.__boneMap) != 0 else "")
