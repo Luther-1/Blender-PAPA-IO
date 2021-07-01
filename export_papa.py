@@ -650,7 +650,7 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
             armature = modifier.object
             break
     if armature == None:
-        return None, None
+        return None, None, None
 
     selectObject(armature)
     bpy.ops.object.mode_set(mode='EDIT')
