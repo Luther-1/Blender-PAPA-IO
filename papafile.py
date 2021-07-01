@@ -1766,9 +1766,12 @@ class PapaFile:
         return bytes(data)
 
     def __buildHeader(self, header):
+        sigVal = bytearray(self.__signature)
+        for _ in range(len(sigVal),6):
+            sigVal.append(0)
         struct.pack_into('<IhhhhhhhhhhhBBBBBB',header,0,0x50617061,0,3,self.getNumStrings(), self.getNumTextures(), self.getNumVertexBuffers(),
             self.getNumIndexBuffers(),self.getNumMaterials(), self.getNumMeshes(), self.getNumSkeletons(), self.getNumModels(), self.getNumAnimations(),
-            *self.__signature)
+            *sigVal)
 
     def __buildComponent(self, componentList, data, position): # position is the current write position of the byte array
         currentSize = 0 # used to offset from the header
