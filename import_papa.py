@@ -79,7 +79,7 @@ def load_papa(properties, context):
                 # model to scene or mesh to model often cause CSGs to be imported far off of the center.
                 blenderMesh = createMeshFromData(papaFile.getString(meshBinding.getNameIndex()),vBuffer,iBuffer, model.getModelToScene() @ meshBinding.getMeshToModel())
 
-                meshGroups.append((vBuffer, blenderMesh))
+                meshGroups.append((vBuffer, blenderMesh, meshBinding))
                 currentMeshes.append(blenderMesh)
 
                 # Smooth shading must be done before custom normals
@@ -221,27 +221,31 @@ def load_papa(properties, context):
                         aBone.tail = (0,1,0) # head and tail required, but are overwritten
                         aBone.matrix = bone.getBindToBone().inverted()
 
-                # for each bone, loop through all vertices in all meshes and check their weight
-                # TODO: bone mappings!
                 for m in range(len(meshGroups)):
-                    bufferMeshPair = meshGroups[m]
+                    meshData = meshGroups[m] # VBuffer, BlenderMesh, MeshBinding
                     vertexGroups = [] # [boneIndex] -> vertexGroup
 
                     # create the vertex groups for this mesh
                     for b in range(skeleton.getNumBones()):
                         bone = skeleton.getBone(b)
                         boneName = papaFile.getString(bone.getNameIndex())
-                        vertexGroups.append(bufferMeshPair[1].vertex_groups.new(name=boneName))
+                        vertexGroups.append(meshData[1].vertex_groups.new(name=boneName))
+
+                    # apply bone mappings
+                    mappedVertexGroups = []
+                    meshBinding = meshData[2]
+                    for b in range(skeleton.getNumBones()):
+                        mappedVertexGroups.append(vertexGroups[meshBinding.getBoneMapping(b)])
                     
                     # apply bone weights
-                    for v in range(bufferMeshPair[0].getNumVertices()):
-                        vertex = bufferMeshPair[0].getVertex(v)
+                    for v in range(meshData[0].getNumVertices()):
+                        vertex = meshData[0].getVertex(v)
                         bones = vertex.getBones()
                         weights = vertex.getWeights()
                         for w in range(4):
                             if(weights[w]==0):
                                 break
-                            vertexGroups[bones[w]].add([v],weights[w],"ADD")
+                            mappedVertexGroups[bones[w]].add([v],weights[w],"ADD")
                 
                 # move armature to new collection
                 bpy.context.view_layer.objects.active = blenderArmature

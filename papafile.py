@@ -683,7 +683,7 @@ class PapaMeshBinding(PapaComponent):
     def getMeshToModel(self) -> Matrix:
         return self.__meshToModel
     
-    def getBoneNameIndex(self, ind) -> int:
+    def getBoneMapping(self, ind) -> int:
         return self.__boneMap[ind]
 
     def buildComponent(self):
