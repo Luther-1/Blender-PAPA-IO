@@ -277,8 +277,8 @@ class ExportPapaUISettings(PropertyGroup):
         + " shaded faces which are marked sharp as disconnected",default=True)
     compress: BoolProperty(name="Join Similar Polygons", description="Joins the data of any faces that have the same normals to reduce file size."
         + " Does nothing if the face is smooth shaded",default=True)
-    merge: BoolProperty(name="Merge Meshes", description="Causes the selected meshes with the same skeleton to be written to the "
-        + "file as one model instead of many. Support for >32 bones")
+    merge: BoolProperty(name="Multi-Mesh", description="Causes the selected meshes with the same skeleton to be written to the "
+        + "file as one model instead of many. Creates support for >32 bones")
     isCSG : BoolProperty(name="Export as CSG",description="Exports the selected object as a CSG instead of as a unit. Cannot be used if multiple meshes are selected")
 
     shaderOptions = [
