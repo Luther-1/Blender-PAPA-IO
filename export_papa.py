@@ -698,6 +698,9 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
 
         parentIndex = boneMap[editBoneParent(properties, editBone).name]
         bone.setParentIndex(parentIndex)
+
+    if len(boneList) == 0:
+        raise PapaBuildException("Skeleton \""+armature.name+"\" has no bones.")
     
     bpy.ops.object.mode_set(mode=lastMode)
     skeleton = PapaSkeleton(boneList)
@@ -1004,6 +1007,9 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     animation = PapaAnimation(-1, len(animationBones),numFrames,animationSpeed,1,animationBones)
     print(animation)
     papaFile.addAnimation(animation)
+
+    if len(animationBones) == 0:
+        PapaExportNotifications.getInstance().addNotification("Animation on armature \""+armature.name+"\" has no data.")
 
     # check for possible errors
     numRootBones = 0
