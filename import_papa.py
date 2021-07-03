@@ -210,7 +210,7 @@ def load_papa(properties, context):
                     editBones.new(boneName)
                     aBone = editBones[boneName]
                     aBone.use_inherit_rotation = True
-                    aBone.use_local_location = False
+                    aBone.use_local_location = True
                     if (bone.getParentBoneIndex() >= 0):
                         parentBone = skeleton.getBone(bone.getParentBoneIndex())
                         aBone.parent = editBones[papaFile.getString(parentBone.getNameIndex())]
@@ -775,12 +775,6 @@ def processBone(poseBone, animation):
         # transform into local space multiply by our bone's inverse matrix
         commonMatrix = poseBone.matrix.inverted() @ poseBone.parent.matrix
 
-        # However, in applying the transformation to the location we correctly move the bones into place,
-        # but we apply an unnecessary rotation which causes the axis to be rotated strangely. This means offsets will be mapped incorrectly
-        # in order to fix this, we must perform our matrix operations in reverse to build a correction matrix
-        _,cr,_ = (poseBone.parent.matrix.inverted() @ poseBone.matrix).decompose()
-        locationCorrectionMatrix = cr.to_matrix().to_4x4()
-
         for x in range(animation.getNumFrames()): # both rotation and translation processed here.
 
             # The rotation component can be applied like normal
@@ -790,7 +784,7 @@ def processBone(poseBone, animation):
             _,r,_ = matrix.decompose()
 
             # apply our correction matrix to just the location to fix it
-            matrix = locationCorrectionMatrix @ commonMatrix @ Matrix.Translation(animBone.getTranslation(x))
+            matrix = commonMatrix @ Matrix.Translation(animBone.getTranslation(x))
             l,_,_ = matrix.decompose()
             
 
