@@ -893,15 +893,20 @@ def processBone(poseBone, animation, properties):
     if parent:
         parent = parent.bone
         commonMatrix = bone.matrix_local.inverted() @ parent.matrix_local
-        _,cr,_ = (parent.matrix_local.inverted() @ bone.matrix_local).decompose()
-        locationCorrectionMatrix = cr.to_matrix().to_4x4()
+        # if it is already in local location mode, we do not need to apply the correction
+        if not bone.use_local_location:
+            _,cr,_ = (parent.matrix_local.inverted() @ bone.matrix_local).decompose()
+            locationCorrectionMatrix = cr.to_matrix().to_4x4().inverted()
 
         for x in range(animation.getNumFrames()): # both rotation and translation processed here.
             
             l = animBone.getTranslation(x)
             r = animBone.getRotation(x)
 
-            matrix = commonMatrix.inverted() @ locationCorrectionMatrix.inverted() @ Matrix.Translation(l)
+            if not bone.use_local_location:
+                matrix = commonMatrix.inverted() @ locationCorrectionMatrix @ Matrix.Translation(l)
+            else:
+                matrix = commonMatrix.inverted() @ Matrix.Translation(l)
             loc, _, _ = matrix.decompose()
             animBone.setTranslation(x,loc)
 

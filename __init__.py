@@ -85,7 +85,7 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
         maxlen= 1024, default= "")
        
     fuzzyMatch : BoolProperty(name="Fuzzy Match Animation Targets",description="Don't require all bones to match to import an animation.", default=True)
-    importTextures : BoolProperty(name="Auto Import Texture Files (Slow!)",description="Automatically import the "
+    importTextures : BoolProperty(name="Auto Import Texture Files",description="Automatically import the "
         + "diffuse, mask, and specular textures from the same folder or linked destinations if they exist", default=True)
     convertToQuads : BoolProperty(name="Convert to Quads",description="Perform a tris to quads conversion before removing doubles", default=True)
     removeDoubles : BoolProperty(name="Remove Doubles",description="Removes double vertices on each mesh", default=True)
