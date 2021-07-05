@@ -999,14 +999,13 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
         for bone in animationBones:
             if hasTransforms(bone,numFrames):
                 newList.append(bone)
-                bone.setNameIndex(papaFile.addString(PapaString(bone.getName())))
             else:
                 print("\""+bone.getName()+"\" has no data. Skipping...")
 
         animationBones = newList
-    else:
-        for bone in animationBones:
-            bone.setNameIndex(papaFile.addString(PapaString(bone.getName())))
+    
+    for bone in animationBones:
+        bone.setNameIndex(papaFile.addString(PapaString(bone.getName())))
 
     # create and put an animation into the file
     animation = PapaAnimation(-1, len(animationBones),numFrames,animationSpeed,1,animationBones)
