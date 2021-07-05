@@ -860,13 +860,13 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     
     nameIndex = papaFile.addString(PapaString(mesh.name))
     print("Generating Mesh Bindings...")
-    meshBinding = PapaMeshBinding(nameIndex,meshIndex,Matrix(),boneMap)
+    meshBinding = PapaMeshBinding(nameIndex,meshIndex,mesh.matrix_world,boneMap)
     print(meshBinding)
     papaMeshBindings = [meshBinding]
 
     if armature == None or not properties.isMerge() or not PapaExportCache.getInstance().getMergeData(armature):
         print("Generating Models...")
-        papaModel = PapaModel(nameIndex,skeletonIndex,mesh.matrix_world,papaMeshBindings)
+        papaModel = PapaModel(nameIndex,skeletonIndex,Matrix(),papaMeshBindings)
         print(papaModel)
         papaFile.addModel(papaModel)
         PapaExportCache.getInstance().addMergeData(armature, papaModel)

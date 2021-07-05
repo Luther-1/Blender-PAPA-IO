@@ -986,7 +986,11 @@ class PapaFile:
         if self.__signature[0] == 0:
             self.__signature = ""
         else:
-            self.__signature = self.__signature.decode('utf-8')
+            t = ""
+            for x in range(6):
+                if self.__signature[x]!=0:
+                    t+=chr(self.__signature[x])
+            self.__signature = t
 
         self.__numberOfStrings = header[3]
         self.__numberOfTextures = header[4]
