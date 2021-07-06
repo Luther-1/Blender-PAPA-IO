@@ -975,6 +975,14 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
         animationBones.append(b)
         animationBoneMap[bone] = b
 
+    # apply the transformation
+    bpy.ops.object.mode_set(mode='OBJECT')
+    oldMatrix = armature.matrix_world.to_4x4()
+    invMatrix = armature.matrix_world.inverted().to_4x4()
+    _, _, scale = armature.matrix_world.decompose()
+    bpy.ops.object.transform_apply()
+
+
     # load the transformations
     bpy.ops.object.mode_set(mode='POSE')
     for frame in range(numFrames):
@@ -989,8 +997,8 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
             else:    
                 # convert the matrix back into local space for compilation
                 matrix = armature.convert_space(pose_bone=bone, matrix=bone.matrix, from_space='POSE',to_space='LOCAL')
-            
             loc, rot, _ = matrix.decompose()
+            loc *= scale
             animationBone.setTranslation(frame, loc)
             animationBone.setRotation(frame, rot)
 
@@ -1029,6 +1037,12 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     for bone in armature.pose.bones:
         if animation.getAnimationBone(bone.name) != None:
             processBone(bone, animation, properties)
+
+    # undo the applied transformation
+    bpy.ops.object.mode_set(mode='OBJECT')
+    armature.matrix_world = invMatrix
+    bpy.ops.object.transform_apply()
+    armature.matrix_world = oldMatrix
 
     # put the header back
     bpy.context.scene.frame_current = savedStartFrame
