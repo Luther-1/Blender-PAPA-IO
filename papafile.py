@@ -723,9 +723,7 @@ class PapaMeshBinding(PapaComponent):
                     same = False
                     break
             if same:
-                count = 0
                 while x < total - 2 and self.__boneMap[x] == x:
-                    count+=1
                     x+=1
                 boneMapString+="\n\t\t..."
             x+=1

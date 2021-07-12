@@ -302,7 +302,7 @@ def createFaceShadingIslands(mesh, properties):
             else:
                 vec2 = Vector(vertices[v3].co) - Vector(vertices[v4].co)
 
-            angleMap[polyIdx][vertexIdx] = vec1.angle(vec2)
+            angleMap[polyIdx][vertexIdx] = vec1.angle(vec2, 0)
 
     return faceMap, connectionMap, angleMap
 
@@ -720,7 +720,7 @@ def computeUVData(mesh, properties):
     uv1 = None if not hasUV2 else mesh.data.uv_layers[1].data
 
     if not hasUV1:
-        raise PapaBuildException("Model is missing UV data.")
+        raise PapaBuildException("Mesh "+mesh.name+" is missing UV data.")
 
     if properties.isCSG():
         if not hasUV2:
@@ -804,7 +804,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     bpy.ops.object.mode_set(mode='OBJECT') # must be in object mode to get UV data
 
     # set up data
-    print("Preparing Data...")
+    print("Preparing to export "+mesh.name+"...")
 
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
     # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
@@ -892,7 +892,7 @@ def processBone(poseBone, animation, properties):
     
     if parent:
         parent = parent.bone
-        commonMatrix = bone.matrix_local.inverted() @ parent.matrix_local
+        commonMatrix = (bone.matrix_local.inverted() @ parent.matrix_local).inverted()
         # if it is already in local location mode, we do not need to apply the correction
         if not bone.use_local_location:
             _,cr,_ = (parent.matrix_local.inverted() @ bone.matrix_local).decompose()
@@ -904,13 +904,16 @@ def processBone(poseBone, animation, properties):
             r = animBone.getRotation(x)
 
             if not bone.use_local_location:
-                matrix = commonMatrix.inverted() @ locationCorrectionMatrix @ Matrix.Translation(l)
+                matrix = commonMatrix @ locationCorrectionMatrix @ Matrix.Translation(l)
             else:
-                matrix = commonMatrix.inverted() @ Matrix.Translation(l)
+                matrix = commonMatrix @ Matrix.Translation(l)
             loc, _, _ = matrix.decompose()
             animBone.setTranslation(x,loc)
 
-            matrix = commonMatrix.inverted() @ r.to_matrix().to_4x4()
+            if not bone.use_inherit_rotation:
+                matrix = r.to_matrix().to_4x4()
+            else:
+                matrix = commonMatrix @ r.to_matrix().to_4x4()
             _, q, _ = matrix.decompose()
             cr = Quaternion((q[1],q[2],q[3],q[0]))
             animBone.setRotation(x,cr)
@@ -992,13 +995,22 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
                 continue
             animationBone = animationBoneMap[bone]
 
-            if properties.isIgnoreRoot() and not poseBoneParent(properties, bone):
+            parent = poseBoneParent(properties,bone)
+
+            if properties.isIgnoreRoot() and not parent:
                 matrix = armature.convert_space(pose_bone=bone, matrix=bone.bone.matrix_local, from_space='POSE',to_space='LOCAL')
             else:    
                 # convert the matrix back into local space for compilation
                 matrix = armature.convert_space(pose_bone=bone, matrix=bone.matrix, from_space='POSE',to_space='LOCAL')
+            
             loc, rot, _ = matrix.decompose()
             loc *= scale
+
+            if not bone.bone.use_inherit_rotation:
+                _,cr,_ = parent.matrix.inverted().decompose()
+                correction = cr.to_matrix().to_4x4() @ bone.bone.matrix_local
+                _,rot,_ = (correction @ rot.to_matrix().to_4x4()).decompose()
+
             animationBone.setTranslation(frame, loc)
             animationBone.setRotation(frame, rot)
 
