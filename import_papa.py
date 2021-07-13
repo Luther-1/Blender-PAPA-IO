@@ -380,7 +380,7 @@ def blenderTextureFromMaterial(papaFile: PapaFile, material: PapaMaterial, param
 
 def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVertexBuffer):
     # Every face in PA is smooth shaded, what matters is the vertex normals.
-    # For blender, if the vertex normals from the data do not match the face normal, it should be smooth shaded
+    # For blender, if the vertex normals from the data do not all match eachother, the face should be smooth shaded
     polygons = blenderMesh.data.polygons
     cmp = vectorsEqualWithinTolerance
     for i in range(0,iBuffer.getNumIndices(),3):
@@ -388,8 +388,9 @@ def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVert
         sv1 = vBuffer.getVertex(iBuffer.getIndex(i))
         sv2 = vBuffer.getVertex(iBuffer.getIndex(i+1))
         sv3 = vBuffer.getVertex(iBuffer.getIndex(i+2))
+        testNormal = sv1.getNormal()
         # data is guaranteed to be triangulated
-        if not cmp(sv1.getNormal(),face.normal,0.01) or not cmp(sv2.getNormal(),face.normal,0.01) or not cmp(sv3.getNormal(),face.normal,0.01):
+        if not cmp(sv2.getNormal(),testNormal,0.01) or not cmp(sv3.getNormal(),testNormal,0.01):
             face.use_smooth = True
 
 def vectorsEqualWithinTolerance(v1, v2, tolerance):
