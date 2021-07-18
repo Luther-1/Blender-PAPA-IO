@@ -155,7 +155,6 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
             row = l.row()
             row.prop(pref,"customColour2")
 
-
 class PapaAddonPreferences(AddonPreferences):
     bl_idname = __name__
 
@@ -169,6 +168,7 @@ class PapaAddonPreferences(AddonPreferences):
 
     customColour1: FloatVectorProperty(name="Primary",min=0,max=1, subtype='COLOR', description="The primary custom colour.")
     customColour2: FloatVectorProperty(name="Secondary",min=0,max=1, subtype='COLOR', description="The secondary custom colour.")
+
 
 
 class PapaExportMaterialListItem(PropertyGroup):
@@ -344,10 +344,7 @@ class PapaExportProperties:
     def getSignature(self):
         return self.__signature
 
-class ExportPapa(bpy.types.Operator, ExportHelper):
-    """Export to PAPA file format (.papa)"""
-    bl_idname = "export_scene.uberent_papa"
-    bl_label = "Export PAPA"
+class ExportPapaUISettings(PropertyGroup):
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"
         + " shaded faces which are marked sharp as disconnected",default=True)
@@ -367,11 +364,16 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
     CSGExportShader: EnumProperty(name="",description="Export shader type",items=shaderOptions)
 
     ignoreRoot: BoolProperty(name="Ignore Root Movement", description="Any bones with no parent will have all transforms removed",default=True)
-    ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file."
+    ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file"
         + " (Edit bones for model export, pose bones for animation export)",default=True)
-    ignoreNoData: BoolProperty(name="Skip Bones With No Data", description="Bones that have no animation data associated with them will not be written.",default=True)
+    ignoreNoData: BoolProperty(name="Skip Bones With No Data", description="Bones that have no animation data associated with them will not be written",default=True)
 
-    signature: StringProperty(name="Signature",description="A six letter or less string to embed into the file that for purposes of crediting.",maxlen=6,subtype='BYTE_STRING')
+    signature: StringProperty(name="Signature",description="A six letter or less string to embed into the file that for purposes of crediting",maxlen=6,subtype='BYTE_STRING')
+
+class ExportPapa(bpy.types.Operator, ExportHelper):
+    """Export to PAPA file format (.papa)"""
+    bl_idname = "export_scene.uberent_papa"
+    bl_label = "Export PAPA"
     
     target_object_string: StringProperty(name="target_object", options={"HIDDEN"}) # assigned from the menu
 
@@ -393,48 +395,50 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
     def draw(self, context):
         l = self.layout
 
+        properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
+
         if self.__isAnimation:
             row = l.row()
-            row.prop(self,"ignoreRoot")
+            row.prop(properties,"ignoreRoot")
 
             row = l.row()
-            row.prop(self,"ignoreHidden")
+            row.prop(properties,"ignoreHidden")
 
             row = l.row()
-            row.prop(self,"ignoreNoData")
+            row.prop(properties,"ignoreNoData")
 
             row = l.row()
-            row.prop(self,"signature")
+            row.prop(properties,"signature")
             return
 
         row = l.row()
-        row.prop(self,"markSharp") # this is so needlessly hard blender why
+        row.prop(properties,"markSharp") # this is so needlessly hard blender why
 
         row = l.row()
-        row.prop(self,"compress")
+        row.prop(properties,"compress")
 
         row = l.row()
-        row.prop(self,"ignoreHidden")
+        row.prop(properties,"ignoreHidden")
 
         row = l.row()
-        row.prop(self,"merge")
+        row.prop(properties,"merge")
 
         row = l.row()
-        row.prop(self,"isCSG")
+        row.prop(properties,"isCSG")
         row.enabled = self.__isCSGCompatible
 
         col = l.column()
         col.label(text="CSG Export Shader:")
-        col.prop(self,"CSGExportShader")
-        col.enabled = self.isCSG
+        col.prop(properties,"CSGExportShader")
+        col.enabled = properties.isCSG
         
         row = l.row()
         row.template_list(PapaExportMaterialList.bl_idname,"",bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST",
             bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST_ACTIVE",rows = len(ExportPapa.materialList))
-        row.enabled = self.isCSG
+        row.enabled = properties.isCSG
 
         row = l.row()
-        row.prop(self,"signature")
+        row.prop(properties,"signature")
     
     def getObject(self): # takes the source string and turns it into a blender object
         if self.target_object_string == ExportPapaMenu.EXPORT_SELECTED_STRING:
@@ -484,7 +488,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
         self.__updatePaths() # update data to match UI
         self.__correctPaths() 
-        shader = self.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
+        shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
             properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.signature)
@@ -659,6 +663,7 @@ _classes = (
     ExportPapa,
     ExportPapaMenu,
     PapaExportMaterialListItem,
+    ExportPapaUISettings,
     PapaExportMaterialList,
     PapaExportMaterialGetPath,
     PapaAddonPreferences,
@@ -675,6 +680,7 @@ def register():
 
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST = CollectionProperty(type = PapaExportMaterialListItem)
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE = IntProperty()
+    bpy.types.Scene.SCENE_PAPA_EXPORT_SETTINGS = PointerProperty(type=ExportPapaUISettings)
     
 def unregister():
     from bpy.utils import unregister_class
