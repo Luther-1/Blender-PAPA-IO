@@ -43,20 +43,21 @@ if "bpy" in locals():
         imp.reload(papafile)
 import bpy
 from bpy.props import *
-from bpy.types import PropertyGroup
+from bpy.types import AddonPreferences, PropertyGroup
 from os import path
 import os
 
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 class PapaImportProperties:
-    def __init__(self, filepath: str, fuzzyMatch: bool, importTextures: bool, convertToQuads: bool, removeDoubles: bool, importNormals: bool):
+    def __init__(self, filepath: str, fuzzyMatch: bool, importTextures: bool, convertToQuads: bool, removeDoubles: bool, importNormals: bool, colours: bool,):
         self.__filepath = filepath
         self.__fuzzyMatch = fuzzyMatch
         self.__importTextures = importTextures
         self.__convertToQuads = convertToQuads
         self.__removeDoubles = removeDoubles
         self.__importNormals = importNormals
+        self.__colours = colours
     def getFilepath(self):
         return self.__filepath
     def isFuzzyMatch(self):
@@ -69,6 +70,10 @@ class PapaImportProperties:
         return self.__removeDoubles
     def isImportNormals(self):
         return self.__importNormals
+    def getPrimaryColour(self):
+        return self.__colours[0]
+    def getSecondaryColour(self):
+        return self.__colours[1]
 
 class ImportPapa(bpy.types.Operator, ImportHelper):
     """Import from PAPA file format (.papa)"""
@@ -93,14 +98,78 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
     
     def execute(self, context):
         from . import import_papa
+
+        pref = context.preferences.addons[__name__].preferences
+
+        colours = self.__getColours(pref)
         
         prop = PapaImportProperties(self.properties.filepath, self.properties.fuzzyMatch, self.properties.importTextures,
-            self.properties.convertToQuads, self.properties.removeDoubles, self.properties.importNormals)
+            self.properties.convertToQuads, self.properties.removeDoubles, self.properties.importNormals,colours)
         return import_papa.load(self, context, prop)
+
+    def __getColours(self, pref):
+
+        if pref.colourScheme=="MLA":
+            return ((0,0.486,1,1),(1,0.394,0,1))
+
+        if pref.colourScheme=="LEGION":
+            return ((1,0,0,1),(0.036,0.036,0.036,1))
+
+        if pref.colourScheme=="CUSTOM":
+            fvp1 = pref.customColour1
+            fvp2 = pref.customColour2
+
+            return ((fvp1[0], fvp1[1], fvp1[2], 1), (fvp2[0], fvp2[1], fvp2[2], 1))
     
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
+    
+    def draw(self, context):
+        l = self.layout
+
+        row = l.row()
+        row.prop(self,"fuzzyMatch")
+
+        row = l.row()
+        row.prop(self,"importTextures")
+
+        row = l.row()
+        row.prop(self,"convertToQuads")
+
+        row = l.row()
+        row.prop(self,"removeDoubles")
+
+        row = l.row()
+        row.prop(self,"importNormals")
+
+        pref = context.preferences.addons[__name__].preferences
+        row = l.row()
+        row.prop(pref,"colourScheme", expand=True)
+
+        colourType = pref.colourScheme
+        if colourType == "CUSTOM":
+            row = l.row()
+            row.prop(pref,"customColour1")
+
+            row = l.row()
+            row.prop(pref,"customColour2")
+
+
+class PapaAddonPreferences(AddonPreferences):
+    bl_idname = __name__
+
+    colourOptions = [
+        ("MLA", "MLA", "Uses the default colours of the MLA (standard faction)", "", 0),
+        ("LEGION", "Legion", "Uses the default colours of the Legion Expansion faction", "", 1),
+        ("CUSTOM", "Custom", "Uses custom colours", "", 2),
+    ]
+
+    colourScheme: EnumProperty(name="Colour Scheme",description="Determines what unit colours should be used",items=colourOptions)
+
+    customColour1: FloatVectorProperty(name="Primary",min=0,max=1, subtype='COLOR', description="The primary custom colour.")
+    customColour2: FloatVectorProperty(name="Secondary",min=0,max=1, subtype='COLOR', description="The secondary custom colour.")
+
 
 class PapaExportMaterialListItem(PropertyGroup):
     exportIndex: IntProperty()
@@ -275,7 +344,10 @@ class PapaExportProperties:
     def getSignature(self):
         return self.__signature
 
-class ExportPapaUISettings(PropertyGroup):
+class ExportPapa(bpy.types.Operator, ExportHelper):
+    """Export to PAPA file format (.papa)"""
+    bl_idname = "export_scene.uberent_papa"
+    bl_label = "Export PAPA"
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"
         + " shaded faces which are marked sharp as disconnected",default=True)
@@ -300,11 +372,6 @@ class ExportPapaUISettings(PropertyGroup):
     ignoreNoData: BoolProperty(name="Skip Bones With No Data", description="Bones that have no animation data associated with them will not be written.",default=True)
 
     signature: StringProperty(name="Signature",description="A six letter or less string to embed into the file that for purposes of crediting.",maxlen=6,subtype='BYTE_STRING')
-
-class ExportPapa(bpy.types.Operator, ExportHelper):
-    """Export to PAPA file format (.papa)"""
-    bl_idname = "export_scene.uberent_papa"
-    bl_label = "Export PAPA"
     
     target_object_string: StringProperty(name="target_object", options={"HIDDEN"}) # assigned from the menu
 
@@ -326,47 +393,48 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
     def draw(self, context):
         l = self.layout
 
-        properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
-
         if self.__isAnimation:
             row = l.row()
-            row.prop(properties,"ignoreRoot")
+            row.prop(self,"ignoreRoot")
 
             row = l.row()
-            row.prop(properties,"ignoreHidden")
+            row.prop(self,"ignoreHidden")
 
             row = l.row()
-            row.prop(properties,"ignoreNoData")
+            row.prop(self,"ignoreNoData")
+
+            row = l.row()
+            row.prop(self,"signature")
             return
 
         row = l.row()
-        row.prop(properties,"markSharp") # this is so needlessly hard blender why
+        row.prop(self,"markSharp") # this is so needlessly hard blender why
 
         row = l.row()
-        row.prop(properties,"compress")
+        row.prop(self,"compress")
 
         row = l.row()
-        row.prop(properties,"ignoreHidden")
+        row.prop(self,"ignoreHidden")
 
         row = l.row()
-        row.prop(properties,"merge")
+        row.prop(self,"merge")
 
         row = l.row()
-        row.prop(properties,"isCSG")
+        row.prop(self,"isCSG")
         row.enabled = self.__isCSGCompatible
 
         col = l.column()
         col.label(text="CSG Export Shader:")
-        col.prop(properties,"CSGExportShader")
-        col.enabled = properties.isCSG
+        col.prop(self,"CSGExportShader")
+        col.enabled = self.isCSG
         
         row = l.row()
         row.template_list(PapaExportMaterialList.bl_idname,"",bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST",
             bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST_ACTIVE",rows = len(ExportPapa.materialList))
-        row.enabled = properties.isCSG
+        row.enabled = self.isCSG
 
         row = l.row()
-        row.prop(properties,"signature")
+        row.prop(self,"signature")
     
     def getObject(self): # takes the source string and turns it into a blender object
         if self.target_object_string == ExportPapaMenu.EXPORT_SELECTED_STRING:
@@ -416,7 +484,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
         self.__updatePaths() # update data to match UI
         self.__correctPaths() 
-        shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
+        shader = self.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
             properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.signature)
@@ -591,9 +659,9 @@ _classes = (
     ExportPapa,
     ExportPapaMenu,
     PapaExportMaterialListItem,
-    ExportPapaUISettings,
     PapaExportMaterialList,
     PapaExportMaterialGetPath,
+    PapaAddonPreferences,
 )
 
 def register():
@@ -607,7 +675,6 @@ def register():
 
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST = CollectionProperty(type = PapaExportMaterialListItem)
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE = IntProperty()
-    bpy.types.Scene.SCENE_PAPA_EXPORT_SETTINGS = PointerProperty(type=ExportPapaUISettings)
     
 def unregister():
     from bpy.utils import unregister_class

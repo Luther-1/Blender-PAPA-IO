@@ -166,7 +166,7 @@ def load_papa(properties, context):
                             print("Warning: Data implies CSG shader but actual shader was unit shader.")
                         
                         if(properties.isImportTextures()):
-                            applyTexture(blenderMaterial, diffuse, None, material, normal, isUnitShader)
+                            applyTexture(blenderMaterial, diffuse, None, material, normal, isUnitShader, properties)
                         else:
                             applyTexturePathsFromData(blenderMaterial, diffuse, None, material, normal)
                 elif importedTexture != None: # Auto apply the diffuse, mask, and specular textures
@@ -184,7 +184,7 @@ def load_papa(properties, context):
                             print("Warning: Data implies unit shader but actual shader was CSG shader.")
 
                         if properties.isImportTextures():
-                            applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader)
+                            applyTexture(blenderMaterial, importedTexture, importedMask, importedMaterial, None, isUnitShader, properties)
                         else:
                             applyTexturePathsFromData(blenderMaterial, importedTexture, importedMask, importedMaterial, None)
                 
@@ -322,7 +322,10 @@ def load_papa(properties, context):
                 print("Found target armature: "+animTargetArmature.name)
 
         # create action for armature
-        action = bpy.data.actions.new(name=file_name)
+        animationName = file_name
+        if papaFile.getSignature()!="":
+            animationName+=" ("+papaFile.getSignature()+")"
+        action = bpy.data.actions.new(name=animationName)
         if not animTargetArmature.animation_data:
             animTargetArmature.animation_data_create() # create animation_data if it doesn't exist yet
         animTargetArmature.animation_data.action = action # link to action
@@ -431,7 +434,7 @@ def applyTexturePathsFromData(blenderMaterial, diffuse:PapaTexture, mask:PapaTex
     if normal:
         blenderMaterial[PapaExportMaterial.NORMAL_EXTENSTION] = normal.getFilepath()
 
-def applyTexture(blenderMaterial, diffuse, mask, material, normal, unit):
+def applyTexture(blenderMaterial, diffuse, mask, material, normal, unit, properties):
 
     if diffuse:
         blenderMaterial[PapaExportMaterial.TEXTURE_EXTENSTION] = diffuse[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION]
@@ -443,7 +446,7 @@ def applyTexture(blenderMaterial, diffuse, mask, material, normal, unit):
         blenderMaterial[PapaExportMaterial.NORMAL_EXTENSTION] = normal[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION]
 
     if unit:
-        applyTextureSolid(blenderMaterial, diffuse, mask, material) # Unit shader
+        applyTextureSolid(blenderMaterial, diffuse, mask, material, properties) # Unit shader
     else:
         applyTextureTextured(blenderMaterial, diffuse, material, normal) # CSG shader
     
@@ -597,7 +600,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
 
             blenderMaterial.node_tree.links.new(bsdf.inputs["Normal"], normalMap.outputs["Normal"]) # link inverted green to roughness on bsdf
 
-def applyTextureSolid(blenderMaterial, diffuse, mask, material): # Unit shader
+def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # Unit shader
     if diffuse and mask:
         blenderMaterial.use_nodes = True
         out = blenderMaterial.node_tree.nodes["Material Output"]
@@ -664,13 +667,13 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material): # Unit shader
         # remap R and G to be the PA default colours (blue and yellow respecitvely)
         colourRampRed = blenderMaterial.node_tree.nodes.new("ShaderNodeValToRGB")
         blenderMaterial.node_tree.links.new(colourRampRed.inputs[0], sepRGB.outputs[0])
-        colourRampRed.color_ramp.elements[1].color = (0,0.486,1,1)
+        colourRampRed.color_ramp.elements[1].color = properties.getPrimaryColour()
         colourRampRed.location.x = mix.location.x - 1150
         colourRampRed.location.y = mix.location.y - 400
 
         colourRampGreen = blenderMaterial.node_tree.nodes.new("ShaderNodeValToRGB")
         blenderMaterial.node_tree.links.new(colourRampGreen.inputs[0], sepRGB.outputs[1])
-        colourRampGreen.color_ramp.elements[1].color = (1,0.394,0,1)
+        colourRampGreen.color_ramp.elements[1].color = properties.getSecondaryColour()
         colourRampGreen.location.x = colourRampRed.location.x
         colourRampGreen.location.y = colourRampRed.location.y - 250
         
