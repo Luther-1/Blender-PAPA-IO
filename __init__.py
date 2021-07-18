@@ -113,7 +113,7 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
             return ((0,0.486,1,1),(1,0.394,0,1))
 
         if pref.colourScheme=="LEGION":
-            return ((1,0,0,1),(0.036,0.036,0.036,1))
+            return ((1,0,0,1),(0,0,0,1))
 
         if pref.colourScheme=="CUSTOM":
             fvp1 = pref.customColour1
