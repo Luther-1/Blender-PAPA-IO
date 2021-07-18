@@ -22,7 +22,7 @@
 # SOFTWARE.
 
 import bpy
-from bpy.types import BooleanModifier
+from fractions import Fraction
 from mathutils import * # has vectors and quaternions
 from os import path
 from .papafile import *
@@ -965,7 +965,7 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     # now, create the animation
     print("Generating Animations...")
     numFrames = bpy.context.scene.frame_end - bpy.context.scene.frame_start + 1
-    animationSpeed = round(bpy.context.scene.render.fps)
+    animationSpeed = Fraction(bpy.context.scene.render.fps / bpy.context.scene.render.fps_base).limit_denominator()
     savedStartFrame = bpy.context.scene.frame_current
 
     # create the animation bones
@@ -1028,7 +1028,7 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
         bone.setNameIndex(papaFile.addString(PapaString(bone.getName())))
 
     # create and put an animation into the file
-    animation = PapaAnimation(-1, len(animationBones),numFrames,animationSpeed,1,animationBones)
+    animation = PapaAnimation(-1, len(animationBones),numFrames,animationSpeed.numerator,animationSpeed.denominator,animationBones)
     print(animation)
     papaFile.addAnimation(animation)
 

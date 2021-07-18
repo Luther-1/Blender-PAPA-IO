@@ -302,8 +302,9 @@ def load_papa(properties, context):
 
         animation = papaFile.getAnimation(0)
 
-        if(animation.getAnimationSpeed() != bpy.context.scene.render.fps):
-            bpy.context.scene.render.fps=animation.getAnimationSpeed() 
+        if(bpy.context.scene.render.fps != animation.getFpsNumerator() or bpy.context.scene.render.fps_base != animation.getFpsDenominator()):
+            bpy.context.scene.render.fps = int(animation.getAnimationSpeed())
+            bpy.context.scene.render.fps_base = int(animation.getAnimationSpeed()) / animation.getAnimationSpeed()
             print("Scene FPS changed to:", animation.getAnimationSpeed())
         
         bpy.context.scene.frame_start = 0
