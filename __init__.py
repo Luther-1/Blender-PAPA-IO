@@ -681,7 +681,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         obj[EDGE_HIGHLIGHT_BLUR] = blur
         
         imgWidth = tex.size[0]
-        imgHeight = tex.size[0]
+        imgHeight = tex.size[1]
         imgSize = imgWidth * imgHeight
         imgDataSize = imgSize * 4
         if imgDataSize & (imgDataSize-1) == 0: # test if the number of values is a power of two
@@ -876,7 +876,7 @@ class TweakDistanceField(bpy.types.Operator):
 
         if self.texelInfo == -1 or recalculate:
             imgWidth = tex.size[0]
-            imgHeight = tex.size[0]
+            imgHeight = tex.size[1]
             imgSize = imgWidth * imgHeight
             imgDataSize = imgSize * 4
             if imgDataSize & (imgDataSize-1) == 0: # test if the number of values is a power of two

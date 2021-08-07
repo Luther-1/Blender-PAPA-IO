@@ -229,7 +229,7 @@ void generateEdgeHighlights( float* uvData, int uvLen, int width, int height, in
                     int y1 = reflect(height,y-i);
                     sum+=kernel[i+kc] * pixelSet(dst,x,y1,width, height);
                 }
-                temp[y*height+x] = sum;
+                temp[y*width+x] = sum;
             }
         }
 
@@ -240,7 +240,7 @@ void generateEdgeHighlights( float* uvData, int uvLen, int width, int height, in
                 float sum = 0;
                 for(int i = -kc;i<=kc;i++) {
                     int x1 = reflect(width,x-i);
-                    sum+=kernel[i+kc] * temp[y*height+x1];
+                    sum+=kernel[i+kc] * temp[y*width+x1];
                 }
                 setPixel( dst, x, y, width, 1.0, 1.0, 1.0, sum);
             }
