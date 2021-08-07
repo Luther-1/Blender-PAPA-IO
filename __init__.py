@@ -1010,6 +1010,8 @@ class SaveTextures(bpy.types.Operator):
         prevImage = area.spaces[0].image
 
         for obj in objects:
+            if obj.type != "MESH":
+                continue
             try:
                 texname = obj[TEX_NAME_STRING]
                 tex = getOrCreateImage(texname)
@@ -1022,7 +1024,7 @@ class SaveTextures(bpy.types.Operator):
         
         if success != 0 or fail != 0:
             if fail != 0:
-                self.report({"INFO"},"Saved "+str(success)+" image(s), "+str(fail) + "models model(s) had no images associated.")
+                self.report({"INFO"},"Saved "+str(success)+" image(s), "+str(fail) + " model(s) had no images associated.")
             else:
                 self.report({"INFO"},"Saved "+str(success)+" image(s)")
         
@@ -1043,6 +1045,8 @@ class UpdateLegacy(bpy.types.Operator):
     def execute(self, context):
         objects = []
         for obj in bpy.context.selected_objects:
+            if obj.type != "MESH":
+                continue
             objects.append(obj)
         if len(objects)==0:
             self.report({'ERROR'},"No Object given")
