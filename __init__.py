@@ -12,6 +12,7 @@ bl_info = {
 }
 
 import bpy
+from bpy.ops import action
 from mathutils import Vector
 from bpy.props import *
 from math import radians, log2
@@ -898,7 +899,7 @@ class TweakDistanceField(bpy.types.Operator):
             tuvPointer = tuvs.buffer_info()[0]
             numTuvCoords = len(tuvs)
 
-            # note: image is saved to SRGB, but this value is linear.
+            # note: image is saved to SRGB, but this value is linear. it is still WYSIWYG for the shader
             decay = 170 # hard coded, use texelinfo to change the way it looks
 
             textureLibrary.generateDistanceField(ctypes.cast(uvPointer,ctypes.POINTER(ctypes.c_float)),
@@ -930,6 +931,7 @@ class PackUndersideFaces(bpy.types.Operator):
     packingFactor: FloatProperty(name="Factor",description="How much to multiply underside UVs by", min=0, max=1, default=0.25)
     maxDeviation: FloatProperty(name="Max Deviation",description="How much of an angle away from straight down the face may point", 
                                 min=0, max=radians(180), default=0.1, subtype="ANGLE")
+    select: BoolProperty(name="Select Faces", description="Selects the faces that were altered", default=True)
     
     def execute(self, context):
         obj = bpy.context.active_object
@@ -946,6 +948,9 @@ class PackUndersideFaces(bpy.types.Operator):
     def processObject(self, mesh):
 
         selectObject(mesh)
+        if self.select:
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action="DESELECT")
         bpy.ops.object.mode_set(mode='OBJECT')
         if len(mesh.data.uv_layers) == 0:
             self.report({'ERROR'},"Mesh has no UV layer")
@@ -965,6 +970,8 @@ class PackUndersideFaces(bpy.types.Operator):
 
             if Vector(poly.normal).angle(down, 100) > maxAng:
                 continue
+
+            poly.select = True
 
             l = len(poly.loop_indices)
             numPacked += 1
@@ -995,6 +1002,7 @@ class SaveTextures(bpy.types.Operator):
             return {'CANCELLED'}
 
         success = 0
+        fail = 0
 
         area = bpy.context.workspace.screens[0].areas[0]
         prevType = area.type
@@ -1006,14 +1014,17 @@ class SaveTextures(bpy.types.Operator):
                 texname = obj[TEX_NAME_STRING]
                 tex = getOrCreateImage(texname)
             except:
-                self.report({"ERROR"},"Object "+str(obj.name)+" has no texture associated with it")
+                fail+=1
                 continue
             area.spaces[0].image = tex
             bpy.ops.image.save_as({'area': area},'INVOKE_DEFAULT',copy=True,filepath = bpy.path.abspath("//")+"/"+str(texname)+".png")
             success+=1
         
-        if success !=0:
-            self.report({"INFO"},"Saved "+str(success)+" images")
+        if success != 0 or fail != 0:
+            if fail != 0:
+                self.report({"INFO"},"Saved "+str(success)+" image(s), "+str(fail) + "models model(s) had no images associated.")
+            else:
+                self.report({"INFO"},"Saved "+str(success)+" image(s)")
         
         area.spaces[0].image = prevImage
         area.type = prevType
@@ -1025,6 +1036,9 @@ class UpdateLegacy(bpy.types.Operator):
     bl_idname = "update_legacy.legion_utils"
     bl_label = "Legion Update Legacy Data"
     bl_options = {'REGISTER','UNDO'}
+
+    meshName: StringProperty(name="Mesh Name",default="")
+    size: IntProperty(name="Texture Size", default=256,min=0, max=4096)
     
     def execute(self, context):
         objects = []
@@ -1066,6 +1080,26 @@ class UpdateLegacy(bpy.types.Operator):
                 success+=1
             except:
                 pass
+        
+        if self.meshName != "":
+            for obj in objects:
+                success+=1
+                obj[OBJ_NAME_STRING] = self.meshName
+
+        if self.size != 0:
+            for obj in objects:
+                obj[TEX_SIZE_STRING] = self.size
+                success+=1
+
+        for obj in objects:
+            if len(obj.data.materials) == 0:
+                continue
+            for node in obj.data.materials[0].node_tree.nodes:
+                if node.bl_idname == "ShaderNodeTexImage" and node.image:
+                    obj[TEX_NAME_STRING] = node.image.name
+                    success+=1
+                    break
+            
             
         
         self.report({"INFO"},"Updated "+str(success)+" properties")
