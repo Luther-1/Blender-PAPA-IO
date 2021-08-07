@@ -388,6 +388,7 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
     free(openList);
     free(swapList);
     free(seenPixels);
+    free(mapping);
     free(mask);
     free(tmask);
 
