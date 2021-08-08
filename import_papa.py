@@ -292,7 +292,7 @@ def load_papa(properties, context):
                     bpy.context.view_layer.objects.active = meshData[1]
                     
                     ops.object.mode_set(mode='EDIT')
-                    ops.mesh.remove_doubles(threshold=0.0001)
+                    ops.mesh.remove_doubles(threshold=0.0001,use_sharp_edge_from_normals=True)
                     ops.object.mode_set(mode='OBJECT')
         
     if(papaFile.getNumAnimations() > 0):

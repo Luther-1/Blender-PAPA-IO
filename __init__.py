@@ -44,7 +44,6 @@ if "bpy" in locals():
 import bpy
 from bpy.props import *
 from bpy.types import AddonPreferences, PropertyGroup
-from os import path
 import os
 
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -94,7 +93,7 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
         + "diffuse, mask, and specular textures from the same folder or linked destinations if they exist", default=True)
     convertToQuads : BoolProperty(name="Convert to Quads",description="Perform a tris to quads conversion before removing doubles", default=True)
     removeDoubles : BoolProperty(name="Remove Doubles",description="Removes double vertices on each mesh", default=True)
-    importNormals : BoolProperty(name="Import Vertex Normals",description="Sets custom normals from the model data", default=False)
+    importNormals : BoolProperty(name="Import Vertex Normals",description="Sets custom normals from the model data", default=True)
     
     def execute(self, context):
         from . import import_papa
@@ -168,8 +167,6 @@ class PapaAddonPreferences(AddonPreferences):
 
     customColour1: FloatVectorProperty(name="Primary",min=0,max=1, subtype='COLOR', description="The primary custom colour.")
     customColour2: FloatVectorProperty(name="Secondary",min=0,max=1, subtype='COLOR', description="The secondary custom colour.")
-
-
 
 class PapaExportMaterialListItem(PropertyGroup):
     exportIndex: IntProperty()
@@ -288,7 +285,8 @@ class PapaExportMaterialList(bpy.types.UIList):
 
     def isPathValid(self, path):
         path = path.replace("\\","/")
-        return (os.path.isfile(path) and ("/pa/" in path or "/pa_ex1/" in path)) or path.startswith("/pa/") # either it is an absolute path and exists, or it's a relative path (assumes it exists)
+        # either it is an absolute path and exists, or it's a relative path (assumes it exists)
+        return (os.path.isfile(path) and ("/pa/" in path or "/pa_ex1/" in path)) or path.startswith("/pa/")
 
 class PapaExportProperties:
     def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
