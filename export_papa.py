@@ -326,7 +326,7 @@ def createFaceMaterialIslands(mesh, properties):
         for x in range(1,len(materialMap)):
             if len(materialMap[x]) !=0:
                 PapaExportNotifications.getInstance().addNotification("Mesh \"" + mesh.name+  "\" has faces assigned to material at index "
-                    + str(x)+" ("+mesh.materials[x].name+"). Using materials other than the first will cause team colour flickering.")
+                    + str(x)+" ("+mesh.data.materials[x].name+"). Using materials other than the first will cause team colour flickering.")
 
     return materialMap
 
