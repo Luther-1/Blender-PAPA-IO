@@ -306,7 +306,7 @@ def createFaceShadingIslands(mesh, properties):
 
     return faceMap, connectionMap, angleMap
 
-def createFaceMaterialIslands(mesh):
+def createFaceMaterialIslands(mesh, properties):
     # faces that use a material must be laid out sequentially in the data
     # we build a map that maps each material to a list of faces that use it
 
@@ -321,6 +321,13 @@ def createFaceMaterialIslands(mesh):
         face = polygons[x]
         idx = face.material_index
         materialMap[idx].append(x)
+
+    if not properties.isCSG():
+        for x in range(1,len(materialMap)):
+            if len(materialMap[x]) !=0:
+                PapaExportNotifications.getInstance().addNotification("Mesh \"" + mesh.name+  "\" has faces assigned to material at index "
+                    + str(x)+" ("+mesh.materials[x].name+"). Using materials other than the first will cause team colour flickering.")
+
     return materialMap
 
 def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBones:dict):
@@ -357,7 +364,8 @@ def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBo
             bonesWithWeights[name] = True
 
     if invalidVertices!=0:
-        PapaExportNotifications.getInstance().addNotification(str(invalidVertices)+" vertices have more than 4 weight links. PA does not support this.")
+        PapaExportNotifications.getInstance().addNotification(str(invalidVertices)+" vertices have more than 4 weight links on mesh \"" + mesh.name + "\""
+            + ". PA does not support this.")
     invalidVertices=0
     
     # report missing weights
@@ -369,7 +377,8 @@ def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBo
             boneWeightMap[x].append( (name, 1) ) # add implicit data
             bonesWithWeights[name] = True
     if invalidVertices!=0:
-        PapaExportNotifications.getInstance().addNotification(str(invalidVertices)+" vertices have no weight links. All vertices must have at least one weight link.")
+        PapaExportNotifications.getInstance().addNotification(str(invalidVertices)+" vertices have no weight links on mesh \"" + mesh.name + "\""
+             + ". All vertices must have at least one weight link.")
 
     # PA's vertex skinning code only works with the first 32 bones.
     numBonesWithWeights = 0
@@ -580,7 +589,7 @@ def getOrMakeTexture(papaFile:PapaFile, textureMap:dict, path: str):
 def createPapaMaterials(papaFile:PapaFile, mesh, properties):
     print("Generating Materials...")
     materials = []
-    if properties.isCSG(): #
+    if properties.isCSG():
         if(len(mesh.material_slots) == 0):
             raise PapaBuildException("No materials present on CSG")
 
@@ -809,7 +818,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
     # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
     shadingMap, connectionMap, angleMap = createFaceShadingIslands(mesh, properties) 
-    materialMap = createFaceMaterialIslands(mesh) # materialIndex -> list of polygons that use that material
+    materialMap = createFaceMaterialIslands(mesh, properties) # materialIndex -> list of polygons that use that material
 
     uvMap = computeUVData(mesh, properties) # [mapIndex (0 for main UV, 1 for shadow map)][face][vertex] -> UV coord
 
