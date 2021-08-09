@@ -491,16 +491,24 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                 if papaSkeleton:
                     # normalize the weights (if they're combined > 1 PA refuses to load them)
                     total = 0
-                    for i in range(len(boneWeightMap[idx])):
+                    length = len(boneWeightMap[idx])
+                    for i in range(length):
                         total+=boneWeightMap[idx][i][1]
 
-                    for i in range(len(boneWeightMap[idx])):
+                    # because of a rounding bug where two values end in 0.5, we need to take special care when converting from 0-1 to 0-255
+                    weightTotal = 0
+                    for i in range(length-1):
                         boneData = boneWeightMap[idx][i]
-                        # if the bone is hidden, don't include the data
-                        if not boneData[0] in boneNameToIndex:
-                            continue
                         boneList[i] = boneNameToIndex[boneData[0]]
-                        weightList[i] = round(boneData[1] / total * 255)
+                        val = round(boneData[1] / total * 255)
+                        weightList[i] = val
+                        weightTotal += val
+
+                    # make the last bone occupy all available weight
+                    if length > 1:
+                        boneData = boneWeightMap[idx][length-1]
+                        boneList[length-1] = boneNameToIndex[boneData[0]]
+                        weightList[length-1] = 255 - weightTotal
 
                 normal = vertexData[0][poly.index][idx]
                 texCoord1 = uvMap[0][poly.index][idx]
