@@ -229,6 +229,7 @@ def createFaceShadingIslands(mesh, properties):
     for _ in range(len(polygons)):
         vertexShadingMap.append({})
     
+    # build the connection map
     for polyIdx in range(len(polygons)):
 
         faceConnections = {}
@@ -274,6 +275,7 @@ def createFaceShadingIslands(mesh, properties):
     for _ in range(len(polygons)):
         angleMap.append({})
 
+    # using the connection map, find the angle all faces make with the specified vertex and make the angle map
     for polyIdx in range(len(polygons)):
         polyEdges = []
         for key in polygons[polyIdx].edge_keys:
@@ -286,7 +288,7 @@ def createFaceShadingIslands(mesh, properties):
                 if vertexIdx in edge.vertices:
                     currentEdges.append(edge)
             
-            # every face must have at exactly 2 edges that touch a vertex, or else it is not a face.
+            # every face must have exactly 2 edges that touch a vertex, or else it is not a face.
             v1 = currentEdges[0].vertices[0]
             v2 = currentEdges[0].vertices[1]
             v3 = currentEdges[1].vertices[0]
@@ -598,9 +600,6 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
     print("Generating Materials...")
     materials = []
     if properties.isCSG():
-        if(len(mesh.material_slots) == 0):
-            raise PapaBuildException("No materials present on CSG")
-
         shaderLevel = 0 # textured
         diffuseStringIndex = papaFile.addString(PapaString("DiffuseTexture"))
         if "normal" in properties.getShader():
@@ -631,16 +630,31 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
             materials.append(mat)
     else:
         nameIndex = papaFile.addString(PapaString("solid"))
-
-        if(len(mesh.material_slots) == 0): # guarantee at least one material, doesn't matter for units
-            mesh.data.materials.append(bpy.data.materials.new(name=mesh.name+"_implicit"))
-            PapaExportNotifications.getInstance().addNotification({"INFO"},"No materials on object \""+mesh.name+"\". New material generated: "+mesh.name+"_implicit")
-
-        for _ in mesh.material_slots:
-            mat = PapaMaterial(nameIndex,[PapaVectorParameter(papaFile.addString(PapaString("DiffuseColor")),Vector([0.5,0.5,0.5,0]))],[],[])
+        for matSlot in mesh.material_slots:
+            mat = PapaMaterial(nameIndex,[PapaVectorParameter(papaFile.addString(PapaString("DiffuseColor")),Vector(matSlot.material.diffuse_color))],[],[])
             print(mat)
             materials.append(mat)
     return materials
+
+def ensureMaterialsValid(mesh, properties):
+
+    if properties.isCSG():
+        if(len(mesh.material_slots) == 0 or not any(mesh.data.materials)):
+            raise PapaBuildException("No materials present on CSG")
+    else:
+        if(len(mesh.material_slots) == 0): # guarantee at least one material, doesn't matter for units
+            mesh.data.materials.append(bpy.data.materials.new(name=mesh.name+"_implicit"))
+            PapaExportNotifications.getInstance().addNotification({"INFO"},"No materials on object \""+mesh.name+"\". New material generated: "+mesh.name+"_implicit")
+        elif not any(mesh.data.materials):# there are material slots, but no faces are assigned to materails that exist.
+            mesh.data.materials[0] = bpy.data.materials.new(name=mesh.name+"_implicit")
+            for poly in mesh.data.polygons:
+                poly.material_index = 0
+            PapaExportNotifications.getInstance().addNotification({"INFO"},"No materials on object \""+mesh.name+"\". New material generated: "+mesh.name+"_implicit")
+    # remove any materials that are unused
+    for i in range(len(mesh.data.materials)-1,0,-1):
+        if not mesh.data.materials[i]:
+            mesh.data.materials.pop(index=i)
+            PapaExportNotifications.getInstance().addNotification({"INFO"},"Deleted unset material on mesh \""+mesh.name+"\" in slot "+str(i))
 
 def isDefaultRotation(quat):
     # (1,0,0,0)
@@ -823,13 +837,15 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     # set up data
     print("Preparing to export "+mesh.name+"...")
 
+    ensureMaterialsValid(mesh, properties)
+
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
     # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
     shadingMap, connectionMap, angleMap = createFaceShadingIslands(mesh, properties) 
     materialMap = createFaceMaterialIslands(mesh, properties) # materialIndex -> list of polygons that use that material
 
     uvMap = computeUVData(mesh, properties) # [mapIndex (0 for main UV, 1 for shadow map)][face][vertex] -> UV coord
-
+ 
     bpy.ops.object.mode_set(mode='EDIT') # swap to edit to get the triangles and normals
     mesh.data.calc_loop_triangles()
     mesh.data.calc_normals_split()

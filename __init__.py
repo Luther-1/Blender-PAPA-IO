@@ -515,6 +515,8 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
             idx = 0
             for slot in obj.material_slots:
                 material = slot.material
+                if not material:
+                    continue
                 mat = PapaExportMaterial(material)
                 ExportPapa.materialList.append(mat)
                 prop = collection.add()
