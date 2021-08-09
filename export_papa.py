@@ -499,7 +499,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
 
                     # because of a rounding bug where two values end in 0.5, we need to take special care when converting from 0-1 to 0-255
                     weightTotal = 0
-                    for i in range(length-1):
+                    for i in range(max(length-1,1)):
                         boneData = boneWeightMap[idx][i]
                         boneList[i] = boneNameToIndex[boneData[0]]
                         val = round(boneData[1] / total * 255)
