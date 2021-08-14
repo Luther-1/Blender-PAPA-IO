@@ -327,8 +327,23 @@ def load_papa(properties, context):
         if papaFile.getSignature()!="":
             animationName+=" ("+papaFile.getSignature()+")"
         action = bpy.data.actions.new(name=animationName)
-        if not animTargetArmature.animation_data:
-            animTargetArmature.animation_data_create() # create animation_data if it doesn't exist yet
+
+        # clear any existing animations and make a new one
+        bpy.context.view_layer.objects.active = animTargetArmature
+        animTargetArmature.animation_data_clear()
+        animTargetArmature.animation_data_create()
+
+        ops.object.mode_set(mode='POSE')
+
+        # reset the current pose
+        for poseBone in animTargetArmature.pose.bones:
+            poseBone.rotation_quaternion = Quaternion()
+            poseBone.scale = Vector( (1,1,1) )
+            poseBone.location = Vector( (0,0,0) )
+
+        ops.object.mode_set(mode='OBJECT')
+
+        
         animTargetArmature.animation_data.action = action # link to action
 
         # correct each bone to a format that blender accepts
@@ -340,7 +355,7 @@ def load_papa(properties, context):
             currentBone = animation.getAnimationBone(i)
             try:
                 bone = animTargetArmature.data.bones[currentBone.getName()]
-            except KeyError as e:
+            except KeyError:
                 continue # we allow some misses with fuzzy
             
             group = action.groups.new(name=currentBone.getName())
