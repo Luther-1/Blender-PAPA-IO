@@ -567,7 +567,37 @@ class SetupMaterialbake(bpy.types.Operator):
         tree.links.new(bsdf.inputs["Base Color"], mixRGB.outputs["Color"])
 
         self.report({"INFO"},"Material successfully updated")
-        
+
+class BakeSelectedObjects(bpy.types.Operator):
+    """Bakes all selected objects' textures."""
+    bl_idname = "bake_objects.legion_utils"
+    bl_label = "Legion Bake Objects"
+    bl_options = {'REGISTER','UNDO'}
+    
+    def execute(self, context):
+        success= 0
+        for obj in bpy.context.selected_objects:
+            try:
+                shouldBake = obj[TEX_SHOULD_BAKE]
+                shouldSupersample = obj[TEX_SHOULD_SUPERSAMPLE]
+                texSize = obj[TEX_SIZE_STRING]
+            except:
+                continue
+
+            if shouldBake:
+                tex = getOrCreateImage(obj[TEX_NAME_STRING],size=texSize)
+                if shouldSupersample:
+                    texSize = (tex.size[0], tex.size[1])
+                    tex.scale(texSize[0]*2,texSize[1]*2)
+                selectObject(obj)
+                bakeType = "AO" if obj.name == "ao" else "DIFFUSE"
+                bpy.ops.object.bake(pass_filter={"COLOR", "AO"},type=bakeType,margin=128)
+                if shouldSupersample:
+                    tex.scale(texSize[0],texSize[1])
+                success+=1
+
+        self.report({"INFO"},"Successfully baked "+str(success)+" textures.")
+        return {'RUNNING_MODAL'}
 
 class SetupEdgeHighlights(bpy.types.Operator):
     """Copies the object and sets it up for edge highlights."""
@@ -1263,6 +1293,7 @@ _classes = (
     SetupDiffuse,
     SetupBake,
     SetupMaterialbake,
+    BakeSelectedObjects,
     CalulateEdgeSharp,
     SetupEdgeHighlights,
     TweakEdgeHighlights,
