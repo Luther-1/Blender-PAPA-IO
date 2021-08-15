@@ -316,13 +316,15 @@ class SetupDiffuse(bpy.types.Operator):
         matData = diffuse.data.materials
         colourNameTuples = (
             ("dark_diffuse",(0x1d,0x27,0x28)),
-            ("medium_diffuse",(0x6b,0x6b,0x6b)),
+            ("medium_diffuse",(0x4e,0x4e,0x4e)),
+            ("light_alt_diffuse",(0x6b,0x6b,0x6b)),
             ("light_diffuse",(0x7d,0x7d,0x7d)),
             ("green_glow_diffuse",(0x60,0xf0,0x00)),
             ("red_glow_diffuse",(0xff,0x00,0x00)),
             ("engine_glow_diffuse",(0xe3,0xad,0x00)),
             ("black_diffuse",(0x00,0x00,0x00)),
             ("white_glow_diffuse",(0xff,0xff,0xff)),
+            ("socket_diffuse",(0x07,0x07,0x0b)),
         )
         for value in colourNameTuples:
             matData.append(createMaterial(value[0],value[1],diffuseTex))
@@ -370,17 +372,17 @@ class SetupBake(bpy.types.Operator):
         materialMap['dark']=[]
         materialMap['light']=[]
         materialMap['glow']=[]
-        materialMap['none']=[]
+        materialMap['vent']=[]
         materialMap['default']=[]
 
         for x in range(len(polygons)):
             face = polygons[x]
             idx = face.material_index
             matName = mesh.data.materials[idx].name
-            if matName=="dark_diffuse":
+            if matName=="dark_diffuse" or matName=="socket_diffuse":
                 materialMap['dark'].append(x)
             elif matName=="black_diffuse":
-                materialMap['none'].append(x)
+                materialMap['vent'].append(x)
             elif matName=="medium_diffuse" or matName=="light_diffuse" or matName=="hazard_stripe" or matName == "hazard_stripe_inverted":
                 materialMap['light'].append(x)
             elif matName=="red_glow_diffuse" or matName=="engine_glow_diffuse" or matName=="white_glow_diffuse" or matName=="green_glow_diffuse":
@@ -389,12 +391,12 @@ class SetupBake(bpy.types.Operator):
                 materialMap['default'].append(x)
         return materialMap
     
-    def assignFacesMaterial(self, materialMap, mesh, dark, light, none, glow):
+    def assignFacesMaterial(self, materialMap, mesh, dark, light, vent, glow):
         polygons = mesh.data.polygons
         materialDict = {mat.name: i for i, mat in enumerate(mesh.data.materials)}
         darkIdx = materialDict[dark]
         lightIdx = materialDict[light]
-        noneIdx = materialDict[none]
+        ventIdx = materialDict[vent]
         glowIdx = materialDict[glow]
 
         for faceIdx in materialMap["dark"]:
@@ -403,10 +405,10 @@ class SetupBake(bpy.types.Operator):
             polygons[faceIdx].material_index = lightIdx
         for faceIdx in materialMap["glow"]:
             polygons[faceIdx].material_index = glowIdx
-        for faceIdx in materialMap["none"]:
-            polygons[faceIdx].material_index = noneIdx
+        for faceIdx in materialMap["vent"]:
+            polygons[faceIdx].material_index = ventIdx
         for faceIdx in materialMap["default"]:
-            polygons[faceIdx].material_index = noneIdx
+            polygons[faceIdx].material_index = ventIdx
     
     def assignFacesMask(self, materialMap, mesh, glow):
         polygons = mesh.data.polygons
@@ -434,6 +436,7 @@ class SetupBake(bpy.types.Operator):
             ("dark_material",(0xc0,0xc0,0xff)),
             ("light_material",(0xf0,0xcc,0xff)),
             ("glow_material",(0x00,0x00,0xff)),
+            ("vent_material",(0x00,0xc5,0xff)),
             ("tread_material",(0x28,0xc5,0xff)),
             ("shiny_material",(0x00,0xff,0x00)),
             ("shiny_lesser_material",(0x08,0xB9,0x00)),
@@ -441,7 +444,7 @@ class SetupBake(bpy.types.Operator):
         for value in colourNameTuples:
             matData.append(createMaterial(value[0],value[1],materialTex))
         
-        self.assignFacesMaterial(materialMap, material, "dark_material", "light_material", "glow_material", "glow_material")
+        self.assignFacesMaterial(materialMap, material, "dark_material", "light_material", "vent_material", "glow_material")
 
         # create the mask object
         texname = name+"_mask_bake"
@@ -457,6 +460,7 @@ class SetupBake(bpy.types.Operator):
             ("primary",(0xff,0x00,0x00)),
             ("secondary",(0x00,0xff,0x00)),
             ("glow_mask",(0x00,0x00,0xff)),
+            ("glow_primary_mask",(0xff,0x00,0xff)),
             ("black_mask",(0x00,0x00,0x00)),
         )
         for value in colourNameTuples:
