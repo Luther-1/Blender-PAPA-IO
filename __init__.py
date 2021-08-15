@@ -596,8 +596,8 @@ class BakeSelectedObjects(bpy.types.Operator):
                     tex.scale(texSize[0],texSize[1])
                 success+=1
 
-        self.report({"INFO"},"Successfully baked "+str(success)+" textures.")
-        return {'RUNNING_MODAL'}
+        self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
+        return {'FINISHED'}
 
 class SetupEdgeHighlights(bpy.types.Operator):
     """Copies the object and sets it up for edge highlights."""
