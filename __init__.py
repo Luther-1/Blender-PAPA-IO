@@ -1159,8 +1159,8 @@ class UpdateLegacy(bpy.types.Operator):
     bl_label = "Legion Update Legacy Data"
     bl_options = {'REGISTER','UNDO'}
 
-    meshName: StringProperty(name="Mesh Name",default="")
-    size: IntProperty(name="Texture Size", default=256,min=0, max=4096)
+    meshName: StringProperty(name="Mesh Name",description="The mesh name to apply, leave blank to do nothing",default="")
+    size: IntProperty(name="Texture Size",description="The texture size to use, set to zero to leave the same", default=256,min=0, max=4096)
     
     def execute(self, context):
         objects = []
@@ -1231,6 +1231,34 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
                     success+=1
+                matNames = [x.material.name if x.material else None for x in obj.material_slots]
+                matIdx = {}
+                selectObject(obj)
+                for x in range(len(obj.material_slots)):
+                    m = obj.material_slots[x].material
+                    if not m:
+                        continue
+                    matIdx[m.name] = x
+                if not "light_alt_diffuse" in matNames and "medium_diffuse" in matNames:
+                    mIdx = matIdx["medium_diffuse"]
+                    obj.material_slots[mIdx].material.name="light_alt_diffuse"
+                    success+=1
+
+                    mat = createMaterial("medium_diffuse",(0x4e,0x4e,0x4e),bpy.data.images[obj[TEX_NAME_STRING]])
+                    obj.data.materials.append(mat)
+                    obj.active_material_index=len(obj.data.materials)-1
+                    for _ in range(7):
+                        bpy.ops.object.material_slot_move(direction="UP")
+                    success+=1
+                if not "socket_diffuse" in matNames:
+                    mat = createMaterial("socket_diffuse",(0x07,0x07,0x0b),bpy.data.images[obj[TEX_NAME_STRING]])
+                    obj.data.materials.append(mat)
+                    obj.active_material_index=len(obj.data.materials)-1
+                    for _ in range(9):
+                        bpy.ops.object.material_slot_move(direction="UP")
+                    success+=1
+
+
             if obj.name=="material":
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
