@@ -12,7 +12,6 @@ bl_info = {
 }
 
 import bpy
-from bpy.ops import action
 from mathutils import Vector
 from bpy.props import *
 from math import radians, log2
@@ -23,6 +22,8 @@ import ctypes
 TEX_SIZE_STRING = "__PAPA_IO_TEXTURE_SIZE"
 OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
+TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
+TEX_SHOULD_SUPERSAMPLE = "PAPA_IO_TEXTURE_SUPERSAMPLE"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
@@ -311,6 +312,8 @@ class SetupDiffuse(bpy.types.Operator):
         diffuse.data.materials.clear()
         diffuse.location[0]+=diffuse.dimensions.x * 2
         diffuse[TEX_NAME_STRING] = texname
+        diffuse[TEX_SHOULD_BAKE] = True
+        diffuse[TEX_SHOULD_SUPERSAMPLE] = True
         bpy.context.collection.objects.link(diffuse)
 
         matData = diffuse.data.materials
@@ -379,11 +382,11 @@ class SetupBake(bpy.types.Operator):
             face = polygons[x]
             idx = face.material_index
             matName = mesh.data.materials[idx].name
-            if matName=="dark_diffuse" or matName=="socket_diffuse":
+            if matName=="dark_diffuse" or matName=="medium_diffuse" or matName=="socket_diffuse":
                 materialMap['dark'].append(x)
             elif matName=="black_diffuse":
                 materialMap['vent'].append(x)
-            elif matName=="medium_diffuse" or matName=="light_diffuse" or matName=="hazard_stripe" or matName == "hazard_stripe_inverted":
+            elif matName=="light_diffuse" or matName=="light_alt_diffuse" or matName=="hazard_stripe" or matName == "hazard_stripe_inverted":
                 materialMap['light'].append(x)
             elif matName=="red_glow_diffuse" or matName=="engine_glow_diffuse" or matName=="white_glow_diffuse" or matName=="green_glow_diffuse":
                 materialMap['glow'].append(x)
@@ -429,6 +432,8 @@ class SetupBake(bpy.types.Operator):
         material.data.materials.clear()
         material.location[0]+=material.dimensions.x * 2
         material[TEX_NAME_STRING] = texname
+        material[TEX_SHOULD_BAKE] = True
+        material[TEX_SHOULD_SUPERSAMPLE] = True
         bpy.context.collection.objects.link(material)
 
         matData = material.data.materials
@@ -453,6 +458,8 @@ class SetupBake(bpy.types.Operator):
         mask.data.materials.clear()
         mask.location[0]+=mask.dimensions.x * 4
         mask[TEX_NAME_STRING] = texname
+        mask[TEX_SHOULD_BAKE] = True
+        mask[TEX_SHOULD_SUPERSAMPLE] = True
         bpy.context.collection.objects.link(mask)
 
         matData = mask.data.materials
@@ -480,12 +487,87 @@ class SetupBake(bpy.types.Operator):
         ao.data.materials.clear()
         ao.location[0]+=ao.dimensions.x * 6
         ao[TEX_NAME_STRING]=texname
+        mask[TEX_SHOULD_BAKE] = True
+        mask[TEX_SHOULD_SUPERSAMPLE] = False
         if ao.dimensions.x < 10:
             ao.location[0]+= ao.dimensions.x
         bpy.context.collection.objects.link(ao)
 
         matData = ao.data.materials
         matData.append(createMaterial("ao_bake",(0xff,0xff,0xff),aoTex,attach=True))
+
+class SetupMaterialbake(bpy.types.Operator):
+    """Creates a material bake for the material object which incorporates the edge highlights"""
+    bl_idname = "setup_materialbake.legion_utils"
+    bl_label = "Legion Setup Material Bake"
+    bl_options = {'UNDO'}
+    
+    def execute(self, context):
+        obj = bpy.context.active_object
+        if not obj:
+            self.report({'ERROR'},"No Object given")
+
+        material = None
+        edgeHighlights = None
+
+        for obj in bpy.context.selected_objects:
+            if obj.name=="material":
+                material = obj
+            if obj.name == "edge highlights":
+                edgeHighlights = obj
+
+        if not material or not edgeHighlights:
+            self.report({'ERROR'},"Selected objects should contain the material object and edge highlight object")
+            return {'CANCELLED'}
+
+
+        self.setupObject(material, edgeHighlights)
+
+        return {'FINISHED'}
+    
+    def setupObject(self, materialObj, edgeHighlight):
+        darkMat = None
+        lightMat = None
+        for slot in materialObj.material_slots:
+            if not slot.material:
+                continue
+            mat = slot.material
+            if mat.name == "dark_material":
+                darkMat = mat
+            if mat.name == "light_material":
+                lightMat = mat
+            
+        if not darkMat or not lightMat:
+            self.report({"ERROR"},"Material object missing dark or light material.")
+            return
+
+        lightCol = lightMat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value
+        
+        tree = darkMat.node_tree
+        bsdf = tree.nodes["Principled BSDF"]
+
+        col = tree.nodes.new("ShaderNodeMixRGB")
+        col.inputs["Fac"].default_value = 0
+        col.inputs["Color1"].default_value=bsdf.inputs["Base Color"].default_value
+
+        mixRGB = tree.nodes.new("ShaderNodeMixRGB")
+        mixRGB.blend_type = "SOFT_LIGHT"
+
+        colourRamp = tree.nodes.new("ShaderNodeValToRGB")
+        colourRamp.color_ramp.elements[1].color = lightCol
+
+        edgeBake = tree.nodes.new("ShaderNodeTexImage")
+        edgeBake.image = edgeHighlight[EDGE_HIGHLIGHT_TEXTURE]
+        edgeBake.select=False
+
+        tree.links.new(mixRGB.inputs["Color1"], col.outputs["Color"])
+        tree.links.new(mixRGB.inputs["Color2"], colourRamp.outputs["Color"])
+        tree.links.new(mixRGB.inputs["Fac"], edgeBake.outputs["Alpha"])
+        tree.links.new(colourRamp.inputs["Fac"], edgeBake.outputs["Color"])
+        tree.links.new(bsdf.inputs["Base Color"], mixRGB.outputs["Color"])
+
+        self.report({"INFO"},"Material successfully updated")
+        
 
 class SetupEdgeHighlights(bpy.types.Operator):
     """Copies the object and sets it up for edge highlights."""
@@ -543,6 +625,8 @@ class SetupEdgeHighlights(bpy.types.Operator):
 
         edgeHighlight[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
         edgeHighlight[TEX_NAME_STRING] = edgeHighlightTex.name
+        edgeHighlight[TEX_SHOULD_BAKE] = False
+        edgeHighlight[TEX_SHOULD_SUPERSAMPLE] = False
         matData = edgeHighlight.data.materials
         matData.append(createEdgeHightlightMaterial("edge highlights", diffuse, ao, edgeHighlightTex))
         
@@ -778,6 +862,8 @@ class SetupDistanceField(bpy.types.Operator):
 
         distanceField[DISTANCE_FIELD_TEXTURE] = distanceFieldTex
         distanceField[TEX_NAME_STRING] = distanceFieldTex.name
+        distanceField[TEX_SHOULD_BAKE] = False
+        distanceField[TEX_SHOULD_SUPERSAMPLE] = False
         matData = distanceField.data.materials
         df = createDistanceFieldMaterial("distance field", distanceFieldTex)
         matData.append(df)
@@ -1107,9 +1193,50 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_NAME_STRING] = node.image.name
                     success+=1
                     break
-            
-            
-        
+        for obj in objects:
+            if obj.name=="diffuse":
+                if not TEX_SHOULD_BAKE in obj:
+                    obj[TEX_SHOULD_BAKE]=True
+                    success+=1
+                if not TEX_SHOULD_SUPERSAMPLE in obj:
+                    obj[TEX_SHOULD_SUPERSAMPLE]=True
+                    success+=1
+            if obj.name=="material":
+                if not TEX_SHOULD_BAKE in obj:
+                    obj[TEX_SHOULD_BAKE]=True
+                    success+=1
+                if not TEX_SHOULD_SUPERSAMPLE in obj:
+                    obj[TEX_SHOULD_SUPERSAMPLE]=True
+                    success+=1
+            if obj.name=="mask":
+                if not TEX_SHOULD_BAKE in obj:
+                    obj[TEX_SHOULD_BAKE]=True
+                    success+=1
+                if not TEX_SHOULD_SUPERSAMPLE in obj:
+                    obj[TEX_SHOULD_SUPERSAMPLE]=True
+                    success+=1
+            if obj.name=="ao":
+                if not TEX_SHOULD_BAKE in obj:
+                    obj[TEX_SHOULD_BAKE]=True
+                    success+=1
+                if not TEX_SHOULD_SUPERSAMPLE in obj:
+                    obj[TEX_SHOULD_SUPERSAMPLE]=False
+                    success+=1
+            if obj.name=="distance field":
+                if not TEX_SHOULD_BAKE in obj:
+                    obj[TEX_SHOULD_BAKE]=False
+                    success+=1
+                if not TEX_SHOULD_SUPERSAMPLE in obj:
+                    obj[TEX_SHOULD_SUPERSAMPLE]=False
+                    success+=1
+            if obj.name=="edge highlights":
+                if not TEX_SHOULD_BAKE in obj:
+                    obj[TEX_SHOULD_BAKE]=False
+                    success+=1
+                if not TEX_SHOULD_SUPERSAMPLE in obj:
+                    obj[TEX_SHOULD_SUPERSAMPLE]=False
+                    success+=1
+                
         self.report({"INFO"},"Updated "+str(success)+" properties")
         
         return {'FINISHED'}
@@ -1135,6 +1262,7 @@ if path.exists(libPath):
 _classes = (
     SetupDiffuse,
     SetupBake,
+    SetupMaterialbake,
     CalulateEdgeSharp,
     SetupEdgeHighlights,
     TweakEdgeHighlights,
