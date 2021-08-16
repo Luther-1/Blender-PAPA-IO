@@ -585,10 +585,12 @@ class BakeSelectedObjects(bpy.types.Operator):
                 continue
 
             if shouldBake:
-                tex = getOrCreateImage(obj[TEX_NAME_STRING],size=texSize)
+                tex = getOrCreateImage(obj[TEX_NAME_STRING])
+
                 if shouldSupersample:
                     texSize = (tex.size[0], tex.size[1])
                     tex.scale(texSize[0]*2,texSize[1]*2)
+                
                 selectObject(obj)
                 bakeType = "AO" if obj.name == "ao" else "DIFFUSE"
                 bpy.ops.object.bake(pass_filter={"COLOR", "AO"},type=bakeType,margin=128)
