@@ -19,11 +19,11 @@ from array import array
 from os import path
 import ctypes
 
-TEX_SIZE_STRING = "__PAPA_IO_TEXTURE_SIZE"
+TEX_SIZE_INT = "__PAPA_IO_TEXTURE_SIZE"
 OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
-TEX_SHOULD_SUPERSAMPLE = "PAPA_IO_TEXTURE_SUPERSAMPLE"
+TEX_SHOULD_SUPERSAMPLE = "__PAPA_IO_TEXTURE_SUPERSAMPLE"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
@@ -41,6 +41,9 @@ def duplicateObject(obj, newName):
     n = obj.copy()
     n.data = obj.data.copy()
     n.name = newName
+    for prop in obj:
+        if str(prop.name).startswith("__PAPA_IO_"):
+            del prop
     return n
 
 # https://blender.stackexchange.com/a/158902
@@ -285,7 +288,7 @@ class SetupDiffuse(bpy.types.Operator):
             return {'CANCELLED'}
 
         texSize = int(self.size)
-        obj[TEX_SIZE_STRING] = texSize
+        obj[TEX_SIZE_INT] = texSize
         obj[OBJ_NAME_STRING] = obj.name.lower()
         self.setupObject(obj, texSize)
 
@@ -356,7 +359,7 @@ class SetupBake(bpy.types.Operator):
             self.report({'ERROR'},"No Object given")
 
         try:
-            size = obj[TEX_SIZE_STRING]
+            size = obj[TEX_SIZE_INT]
             name = obj[OBJ_NAME_STRING]
         except:
             self.report({'ERROR'},"Selected object must have been previously created by \"setup diffuse\"")
@@ -580,7 +583,7 @@ class BakeSelectedObjects(bpy.types.Operator):
             try:
                 shouldBake = obj[TEX_SHOULD_BAKE]
                 shouldSupersample = obj[TEX_SHOULD_SUPERSAMPLE]
-                texSize = obj[TEX_SIZE_STRING]
+                texSize = obj[TEX_SIZE_INT]
             except:
                 continue
 
@@ -620,7 +623,7 @@ class SetupEdgeHighlights(bpy.types.Operator):
     
         try:
             name = obj[OBJ_NAME_STRING]
-            size = obj[TEX_SIZE_STRING]
+            size = obj[TEX_SIZE_INT]
             for obj in bpy.context.selected_objects:
                 if obj.name=="diffuse":
                     diffuseObj = obj
@@ -848,7 +851,7 @@ class SetupDistanceField(bpy.types.Operator):
     
         try:
             name = obj[OBJ_NAME_STRING]
-            size = obj[TEX_SIZE_STRING]
+            size = obj[TEX_SIZE_INT]
             for obj in bpy.context.selectable_objects:
                 if obj.name=="diffuse":
                     diffuseObj = obj
@@ -1162,7 +1165,7 @@ class UpdateLegacy(bpy.types.Operator):
     bl_options = {'REGISTER','UNDO'}
 
     meshName: StringProperty(name="Mesh Name",description="The mesh name to apply, leave blank to do nothing",default="")
-    size: IntProperty(name="Texture Size",description="The texture size to use, set to zero to leave the same", default=256,min=0, max=4096)
+    size: IntProperty(name="Texture Size",description="The texture size to use, set to zero to leave the same", default=0,min=0, max=4096)
     
     def execute(self, context):
         objects = []
@@ -1186,7 +1189,7 @@ class UpdateLegacy(bpy.types.Operator):
                 pass
             try:
                 texsize = obj["__LEGION_TEXTURE_SIZE"]
-                obj[TEX_SIZE_STRING] = texsize
+                obj[TEX_SIZE_INT] = texsize
                 del obj["__LEGION_TEXTURE_SIZE"]
                 success+=1
             except:
@@ -1209,13 +1212,48 @@ class UpdateLegacy(bpy.types.Operator):
         
         if self.meshName != "":
             for obj in objects:
-                success+=1
-                obj[OBJ_NAME_STRING] = self.meshName
+
+                if OBJ_NAME_STRING in obj and TEX_NAME_STRING in obj:
+                    oldName = obj[OBJ_NAME_STRING]
+                    texStr = obj[TEX_NAME_STRING]
+                    try:
+                        img = getOrCreateImage(texStr)
+                    except:
+                        continue
+                    img.name = self.meshName + oldName[len(oldName)::]
+                    success+=1
+
+                if not OBJ_NAME_STRING in obj or obj[OBJ_NAME_STRING] != self.meshName:
+                    success+=1
+                    obj[OBJ_NAME_STRING] = self.meshName
+                
+                
+
 
         if self.size != 0:
             for obj in objects:
-                obj[TEX_SIZE_STRING] = self.size
-                success+=1
+                if not TEX_SIZE_INT in obj or obj[TEX_SIZE_INT] != self.size:
+                    obj[TEX_SIZE_INT] = self.size
+                    success+=1
+
+            for obj in objects:
+                if not TEX_NAME_STRING in obj:
+                    continue
+                texStr = obj[TEX_NAME_STRING]
+                try:
+                    img = getOrCreateImage(texStr)
+                except:
+                    continue
+
+                correctSize = self.size
+                if obj.name == "ao":
+                    correctSize*=2
+
+                if img.size[0]!=correctSize or img.size[1]!=correctSize:
+                    img.scale(correctSize,correctSize)
+                    success+=1
+        
+
 
         for obj in objects:
             if len(obj.data.materials) == 0:
