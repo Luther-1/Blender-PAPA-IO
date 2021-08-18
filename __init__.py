@@ -1250,7 +1250,7 @@ class UpdateLegacy(bpy.types.Operator):
                         img = getOrCreateImage(texStr)
                     except:
                         continue
-                    img.name = self.meshName + oldName[len(oldName)::]
+                    img.name = self.meshName + texStr[len(oldName)::]
                     success+=1
 
                 if not OBJ_NAME_STRING in obj or obj[OBJ_NAME_STRING] != self.meshName:
