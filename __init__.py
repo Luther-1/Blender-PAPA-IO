@@ -60,8 +60,10 @@ def createMaterial(name: str, colour: tuple, blenderImage, attach=False):
     mat = bpy.data.materials.new(name=name)
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
-    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
     bsdf.inputs["Base Color"].default_value = tuple([srgbToLinearRGB(c/0xff) for c in colour] + [1])
+    if blenderImage == None:
+        return mat
+    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
     tex.image = blenderImage
     tex.location[0] = -300
     tex.location[1] = 200
@@ -424,6 +426,13 @@ class SetupBake(bpy.types.Operator):
         for faceIdx in materialMap["glow"]:
             polygons[faceIdx].material_index = glowIdx
 
+    def assignFacesAO(self, materialMap, mesh, glow):
+        polygons = mesh.data.polygons
+        materialDict = {mat.name: i for i, mat in enumerate(mesh.data.materials)}
+        glowIdx = materialDict[glow]
+
+        for faceIdx in materialMap["glow"]:
+            polygons[faceIdx].material_index = glowIdx
 
     def setupObject(self, obj, texSize, name):
         materialMap = self.getMaterialMap(obj)
@@ -498,6 +507,10 @@ class SetupBake(bpy.types.Operator):
 
         matData = ao.data.materials
         matData.append(createMaterial("ao_bake",(0xff,0xff,0xff),aoTex,attach=True))
+        matData.append(createMaterial("ao_bake_ignore",(0xff,0xff,0xff),aoTex,attach=False))
+
+        self.assignFacesAO(materialMap,ao,1)
+
 
 class SetupMaterialbake(bpy.types.Operator):
     """Creates a material bake for the material object which incorporates the edge highlights"""
@@ -576,6 +589,15 @@ class BakeSelectedObjects(bpy.types.Operator):
     bl_idname = "bake_objects.legion_utils"
     bl_label = "Legion Bake Objects"
     bl_options = {'REGISTER','UNDO'}
+
+    def alterUvs(self, mesh, idx, move):
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+        uvData = mesh.data.uv_layers[0].data
+        for poly in mesh.data.polygons:
+            if poly.material_index == idx:
+                for loopIdx in poly.loop_indices:
+                    uvData[loopIdx].uv[0]+=move
     
     def execute(self, context):
         success= 0
@@ -595,8 +617,16 @@ class BakeSelectedObjects(bpy.types.Operator):
                     tex.scale(texSize[0]*2,texSize[1]*2)
                 
                 selectObject(obj)
-                bakeType = "AO" if obj.name == "ao" else "DIFFUSE"
-                bpy.ops.object.bake(pass_filter={"COLOR", "AO"},type=bakeType,margin=128)
+
+                if obj.name == "ao":
+                    bpy.ops.object.bake(pass_filter={"AO"},type="AO",margin=128)
+                    self.alterUvs(obj,0,1)
+                    bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
+                    self.alterUvs(obj,0,-1)
+                else:
+                    bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=128)
+                    
+
                 if shouldSupersample:
                     tex.scale(texSize[0],texSize[1])
                 success+=1
@@ -1297,6 +1327,10 @@ class UpdateLegacy(bpy.types.Operator):
                     for _ in range(9):
                         bpy.ops.object.material_slot_move(direction="UP")
                     success+=1
+                if obj.name=="ao":
+                    if not "ao_bake_ignore" in obj.data.materials and TEX_NAME_STRING in obj:
+                        obj.data.materials.append(createMaterial("ao_bake_ignore",(0xff,0xff,0xff),getOrCreateImage(obj[TEX_NAME_STRING],obj[TEX_SIZE_INT]*2),attach=False))
+                        success+=1
 
 
             if obj.name=="material":
