@@ -21,6 +21,7 @@ import ctypes
 
 TEX_SIZE_INT = "__PAPA_IO_TEXTURE_SIZE"
 OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
+OBJ_TYPE_STRING = "__PAPA_IO_MESH_TYPE"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
 TEX_SHOULD_SUPERSAMPLE = "__PAPA_IO_TEXTURE_SUPERSAMPLE"
@@ -45,6 +46,11 @@ def duplicateObject(obj, newName):
         if str(prop.name).startswith("__PAPA_IO_"):
             del prop
     return n
+
+def getObjectType(obj):
+    if not OBJ_NAME_STRING in obj:
+        return ""
+    return obj[OBJ_NAME_STRING]
 
 # https://blender.stackexchange.com/a/158902
 def srgbToLinearRGB(c):
@@ -316,9 +322,12 @@ class SetupDiffuse(bpy.types.Operator):
         diffuse = duplicateObject(obj,"diffuse")
         diffuse.data.materials.clear()
         diffuse.location[0]+=diffuse.dimensions.x * 2
+        diffuse[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
+        diffuse[OBJ_TYPE_STRING] = "DIFFUSE"
         diffuse[TEX_NAME_STRING] = texname
         diffuse[TEX_SHOULD_BAKE] = True
         diffuse[TEX_SHOULD_SUPERSAMPLE] = True
+        diffuse[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         bpy.context.collection.objects.link(diffuse)
 
         matData = diffuse.data.materials
@@ -443,9 +452,12 @@ class SetupBake(bpy.types.Operator):
         material = duplicateObject(obj,"material")
         material.data.materials.clear()
         material.location[0]+=material.dimensions.x * 2
+        material[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
+        material[OBJ_TYPE_STRING] = "MATERIAL"
         material[TEX_NAME_STRING] = texname
         material[TEX_SHOULD_BAKE] = True
         material[TEX_SHOULD_SUPERSAMPLE] = True
+        material[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         bpy.context.collection.objects.link(material)
 
         matData = material.data.materials
@@ -469,9 +481,12 @@ class SetupBake(bpy.types.Operator):
         mask = duplicateObject(obj,"mask")
         mask.data.materials.clear()
         mask.location[0]+=mask.dimensions.x * 4
+        mask[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
+        mask[OBJ_TYPE_STRING] = "MASK"
         mask[TEX_NAME_STRING] = texname
         mask[TEX_SHOULD_BAKE] = True
         mask[TEX_SHOULD_SUPERSAMPLE] = True
+        mask[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         bpy.context.collection.objects.link(mask)
 
         matData = mask.data.materials
@@ -498,9 +513,12 @@ class SetupBake(bpy.types.Operator):
         ao = duplicateObject(obj,"ao")
         ao.data.materials.clear()
         ao.location[0]+=ao.dimensions.x * 6
+        ao[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
+        ao[OBJ_TYPE_STRING] = "AO"
         ao[TEX_NAME_STRING]=texname
-        mask[TEX_SHOULD_BAKE] = True
-        mask[TEX_SHOULD_SUPERSAMPLE] = False
+        ao[TEX_SHOULD_BAKE] = True
+        ao[TEX_SHOULD_SUPERSAMPLE] = False
+        ao[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         if ao.dimensions.x < 10:
             ao.location[0]+= ao.dimensions.x
         bpy.context.collection.objects.link(ao)
@@ -527,9 +545,10 @@ class SetupMaterialbake(bpy.types.Operator):
         edgeHighlights = None
 
         for obj in bpy.context.selected_objects:
-            if obj.name=="material":
+            t = getObjectType(obj)
+            if t == "MATERIAL":
                 material = obj
-            if obj.name == "edge highlights":
+            if t == "EDGE_HIGHLIGHT":
                 edgeHighlights = obj
 
         if not material or not edgeHighlights:
@@ -618,7 +637,7 @@ class BakeSelectedObjects(bpy.types.Operator):
                 
                 selectObject(obj)
 
-                if obj.name == "ao":
+                if getObjectType(obj) == "AO":
                     bpy.ops.object.bake(pass_filter={"AO"},type="AO",margin=128)
                     self.alterUvs(obj,0,1)
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
@@ -655,9 +674,10 @@ class SetupEdgeHighlights(bpy.types.Operator):
             name = obj[OBJ_NAME_STRING]
             size = obj[TEX_SIZE_INT]
             for obj in bpy.context.selected_objects:
-                if obj.name=="diffuse":
+                t = getObjectType(obj)
+                if t == "DIFFUSE":
                     diffuseObj = obj
-                if obj.name=="ao":
+                if t == "AO":
                     aoObj = obj
 
         except:
@@ -688,10 +708,13 @@ class SetupEdgeHighlights(bpy.types.Operator):
             edgeHighlight.location[1]+=edgeHighlight.dimensions.y * 2
         bpy.context.collection.objects.link(edgeHighlight)
 
+        edgeHighlight[OBJ_NAME_STRING] = diffuse[OBJ_NAME_STRING]
+        edgeHighlight[OBJ_TYPE_STRING] = "EDGE_HIGHLIGHT"
         edgeHighlight[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
         edgeHighlight[TEX_NAME_STRING] = edgeHighlightTex.name
         edgeHighlight[TEX_SHOULD_BAKE] = False
         edgeHighlight[TEX_SHOULD_SUPERSAMPLE] = False
+        edgeHighlight[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
         matData = edgeHighlight.data.materials
         matData.append(createEdgeHightlightMaterial("edge highlights", diffuse, ao, edgeHighlightTex))
         
@@ -883,11 +906,12 @@ class SetupDistanceField(bpy.types.Operator):
             name = obj[OBJ_NAME_STRING]
             size = obj[TEX_SIZE_INT]
             for obj in bpy.context.selectable_objects:
-                if obj.name=="diffuse":
+                t = getObjectType(obj)
+                if t == "DIFFUSE":
                     diffuseObj = obj
-                if obj.name=="ao":
+                if t == "AO":
                     aoObj = obj
-                if obj.name == "edge highlights":
+                if t == "EDGE_HIGHLIGHT":
                     edgeObj = obj
                 if(obj.location[0] > maxLocation):
                     locObj = obj
@@ -925,10 +949,13 @@ class SetupDistanceField(bpy.types.Operator):
             distanceField.location[2]=locObj.location[2]
         bpy.context.collection.objects.link(distanceField)
 
+        distanceField[OBJ_NAME_STRING] = diffuse[OBJ_NAME_STRING]
+        distanceField[OBJ_TYPE_STRING] = "DISTANCE_FIELD"
         distanceField[DISTANCE_FIELD_TEXTURE] = distanceFieldTex
         distanceField[TEX_NAME_STRING] = distanceFieldTex.name
         distanceField[TEX_SHOULD_BAKE] = False
         distanceField[TEX_SHOULD_SUPERSAMPLE] = False
+        distanceField[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
         matData = distanceField.data.materials
         df = createDistanceFieldMaterial("distance field", distanceFieldTex)
         matData.append(df)
@@ -1209,6 +1236,7 @@ class UpdateLegacy(bpy.types.Operator):
 
         success = 0
 
+        # change old legacy names
         for obj in objects:
             try:
                 objname = obj["__LEGION_MESH_NAME"]
@@ -1232,14 +1260,22 @@ class UpdateLegacy(bpy.types.Operator):
             except:
                 pass
             try:
-                edgehighlights = obj["__LEGION_EDGE_HIGHLIGHTS"]
-                obj[EDGE_HIGHLIGHT_TEXTURE] = edgehighlights
+                edgeHighlightTex = obj["__LEGION_EDGE_HIGHLIGHTS"]
+                obj[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
                 del obj["__LEGION_EDGE_HIGHLIGHTS"]
-                obj[TEX_NAME_STRING] = edgehighlights.name
+                obj[TEX_NAME_STRING] = edgeHighlightTex.name
+                success+=1
+            except:
+                pass
+            try:
+                supersample = obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
+                obj[TEX_SHOULD_SUPERSAMPLE] = supersample
+                del obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
                 success+=1
             except:
                 pass
         
+        # update mesh names
         if self.meshName != "":
             for obj in objects:
 
@@ -1256,10 +1292,19 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_NAME_STRING in obj or obj[OBJ_NAME_STRING] != self.meshName:
                     success+=1
                     obj[OBJ_NAME_STRING] = self.meshName
-                
-                
 
-
+        # copy the texture from material
+        for obj in objects:
+            if not TEX_NAME_STRING in obj or not obj[TEX_NAME_STRING] in bpy.data.images:
+                if len(obj.data.materials) == 0:
+                    continue
+                for node in obj.data.materials[0].node_tree.nodes:
+                    if node.bl_idname == "ShaderNodeTexImage" and node.image:
+                        obj[TEX_NAME_STRING] = node.image.name
+                        success+=1
+                        break
+        
+        # resize images
         if self.size != 0:
             for obj in objects:
                 if not TEX_SIZE_INT in obj or obj[TEX_SIZE_INT] != self.size:
@@ -1276,23 +1321,14 @@ class UpdateLegacy(bpy.types.Operator):
                     continue
 
                 correctSize = self.size
-                if obj.name == "ao":
+                if getObjectType(obj) == "AO":
                     correctSize*=2
 
                 if img.size[0]!=correctSize or img.size[1]!=correctSize:
                     img.scale(correctSize,correctSize)
                     success+=1
         
-
-
-        for obj in objects:
-            if len(obj.data.materials) == 0:
-                continue
-            for node in obj.data.materials[0].node_tree.nodes:
-                if node.bl_idname == "ShaderNodeTexImage" and node.image:
-                    obj[TEX_NAME_STRING] = node.image.name
-                    success+=1
-                    break
+        # general update / add properties
         for obj in objects:
             if obj.name=="diffuse":
                 if not TEX_SHOULD_BAKE in obj:
@@ -1300,6 +1336,9 @@ class UpdateLegacy(bpy.types.Operator):
                     success+=1
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
+                    success+=1
+                if not OBJ_TYPE_STRING in obj:
+                    obj[OBJ_TYPE_STRING] = "DIFFUSE"
                     success+=1
                 matNames = [x.material.name if x.material else None for x in obj.material_slots]
                 matIdx = {}
@@ -1340,12 +1379,18 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
                     success+=1
+                if not OBJ_TYPE_STRING in obj:
+                    obj[OBJ_TYPE_STRING] = "MATERIAL"
+                    success+=1
             if obj.name=="mask":
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
+                    success+=1
+                if not OBJ_TYPE_STRING in obj:
+                    obj[OBJ_TYPE_STRING] = "MASK"
                     success+=1
             if obj.name=="ao":
                 if not TEX_SHOULD_BAKE in obj:
@@ -1361,12 +1406,18 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
+                if not OBJ_TYPE_STRING in obj:
+                    obj[OBJ_TYPE_STRING] = "DISTANCE_FIELD"
+                    success+=1
             if obj.name=="edge highlights":
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
                     success+=1
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=False
+                    success+=1
+                if not OBJ_TYPE_STRING in obj:
+                    obj[OBJ_TYPE_STRING] = "EDGE_HIGHLIGHT"
                     success+=1
                 
         self.report({"INFO"},"Updated "+str(success)+" properties")
