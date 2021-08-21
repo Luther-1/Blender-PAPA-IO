@@ -527,7 +527,7 @@ class SetupBake(bpy.types.Operator):
         matData.append(createMaterial("ao_bake",(0xff,0xff,0xff),aoTex,attach=True))
         matData.append(createMaterial("ao_bake_ignore",(0xff,0xff,0xff),aoTex,attach=False))
 
-        self.assignFacesAO(materialMap,ao,1)
+        self.assignFacesAO(materialMap,ao,"ao_bake_ignore")
 
 
 class SetupMaterialbake(bpy.types.Operator):
