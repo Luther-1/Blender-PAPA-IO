@@ -42,9 +42,9 @@ def duplicateObject(obj, newName):
     n = obj.copy()
     n.data = obj.data.copy()
     n.name = newName
-    for prop in obj:
-        if str(prop.name).startswith("__PAPA_IO_"):
-            del prop
+    for prop in dict(n):
+        if str(prop).startswith("__PAPA_IO_"):
+            del n[str(prop)]
     return n
 
 def getObjectType(obj):
