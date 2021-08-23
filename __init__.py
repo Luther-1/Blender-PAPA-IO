@@ -48,9 +48,9 @@ def duplicateObject(obj, newName):
     return n
 
 def getObjectType(obj):
-    if not OBJ_NAME_STRING in obj:
+    if not OBJ_TYPE_STRING in obj:
         return ""
-    return obj[OBJ_NAME_STRING]
+    return obj[OBJ_TYPE_STRING]
 
 # https://blender.stackexchange.com/a/158902
 def srgbToLinearRGB(c):
@@ -1275,28 +1275,14 @@ class UpdateLegacy(bpy.types.Operator):
             except:
                 pass
         
-        # update mesh names
-        if self.meshName != "":
-            for obj in objects:
+        
 
-                if OBJ_NAME_STRING in obj and TEX_NAME_STRING in obj:
-                    oldName = obj[OBJ_NAME_STRING]
-                    texStr = obj[TEX_NAME_STRING]
-                    try:
-                        img = getOrCreateImage(texStr)
-                    except:
-                        continue
-                    img.name = self.meshName + texStr[len(oldName)::]
-                    success+=1
-
-                if not OBJ_NAME_STRING in obj or obj[OBJ_NAME_STRING] != self.meshName:
-                    success+=1
-                    obj[OBJ_NAME_STRING] = self.meshName
-
-        # copy the texture from material
+        # copy the texture name from material if it is not defined already
         for obj in objects:
             if not TEX_NAME_STRING in obj or not obj[TEX_NAME_STRING] in bpy.data.images:
                 if len(obj.data.materials) == 0:
+                    continue
+                if not obj.data.materials[0].node_tree: # not using nodes
                     continue
                 for node in obj.data.materials[0].node_tree.nodes:
                     if node.bl_idname == "ShaderNodeTexImage" and node.image:
@@ -1316,7 +1302,7 @@ class UpdateLegacy(bpy.types.Operator):
                     continue
                 texStr = obj[TEX_NAME_STRING]
                 try:
-                    img = getOrCreateImage(texStr)
+                    img = getOrCreateImage(texStr, self.size)
                 except:
                     continue
 
@@ -1327,6 +1313,39 @@ class UpdateLegacy(bpy.types.Operator):
                 if img.size[0]!=correctSize or img.size[1]!=correctSize:
                     img.scale(correctSize,correctSize)
                     success+=1
+
+        # update mesh names
+        if self.meshName != "":
+            for obj in objects:
+
+                if OBJ_NAME_STRING in obj and TEX_NAME_STRING in obj:
+                    oldName = obj[OBJ_NAME_STRING]
+                    texStr = obj[TEX_NAME_STRING]
+                    try:
+                        img = getOrCreateImage(texStr)
+                    except:
+                        continue
+                    texname = self.meshName + texStr[len(oldName)::]
+                    img.name = texname
+                    obj[TEX_NAME_STRING] = texname
+                    success+=1
+
+                if not OBJ_NAME_STRING in obj or obj[OBJ_NAME_STRING] != self.meshName:
+                    success+=1
+                    obj[OBJ_NAME_STRING] = self.meshName
+        
+        # link the nodes to textures if they are not already there
+        for obj in objects:
+            if TEX_NAME_STRING in obj and obj[TEX_NAME_STRING] in bpy.data.images:
+                if len(obj.data.materials) == 0:
+                    continue
+                for mat in obj.data.materials:
+                    if not mat.use_nodes:
+                        continue
+                    for node in mat.node_tree.nodes:
+                        if node.bl_idname == "ShaderNodeTexImage" and not node.image:
+                            node.image = getOrCreateImage(obj[TEX_NAME_STRING])
+                            success+=1
         
         # general update / add properties
         for obj in objects:
@@ -1409,6 +1428,11 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = "DISTANCE_FIELD"
                     success+=1
+                if DISTANCE_FIELD_TEXTURE in obj and not obj[DISTANCE_FIELD_TEXTURE] and TEX_NAME_STRING in obj and TEX_SIZE_INT in obj:
+                    texname = obj[TEX_NAME_STRING]
+                    img = getOrCreateImage(texname, obj[TEX_SIZE_INT])
+                    obj[DISTANCE_FIELD_TEXTURE] = img
+                    success+=1
             if obj.name=="edge highlights":
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
@@ -1418,6 +1442,11 @@ class UpdateLegacy(bpy.types.Operator):
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = "EDGE_HIGHLIGHT"
+                    success+=1
+                if EDGE_HIGHLIGHT_TEXTURE in obj and not obj[EDGE_HIGHLIGHT_TEXTURE] and TEX_NAME_STRING in obj and TEX_SIZE_INT in obj:
+                    texname = obj[TEX_NAME_STRING]
+                    img = getOrCreateImage(texname, obj[TEX_SIZE_INT])
+                    obj[EDGE_HIGHLIGHT_TEXTURE] = img
                     success+=1
                 
         self.report({"INFO"},"Updated "+str(success)+" properties")
