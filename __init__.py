@@ -644,10 +644,19 @@ class BakeSelectedObjects(bpy.types.Operator):
                     self.alterUvs(obj,0,-1)
                 else:
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=128)
-                    
 
                 if shouldSupersample:
                     tex.scale(texSize[0],texSize[1])
+
+                if getObjectType(obj) == "DIFFUSE": # add magic pixel TODO remove
+                    idx = texSize[0] * texSize[1] * 4 - 4
+                    tex.pixels[idx] = 1.0
+                    tex.pixels[idx + 1] = 0.0
+                    tex.pixels[idx + 2] = 1.0
+                    tex.pixels[idx + 3] = 1.0
+                else:
+                    tex.pixels[0] = tex.pixels[0] # force a reload, sometimes the texture won't update automatically after a bake
+                
                 success+=1
 
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
