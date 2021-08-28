@@ -1298,36 +1298,13 @@ class UpdateLegacy(bpy.types.Operator):
                         obj[TEX_NAME_STRING] = node.image.name
                         success+=1
                         break
-        
-        # resize images
-        if self.size != 0:
-            for obj in objects:
-                if not TEX_SIZE_INT in obj or obj[TEX_SIZE_INT] != self.size:
-                    obj[TEX_SIZE_INT] = self.size
-                    success+=1
-
-            for obj in objects:
-                if not TEX_NAME_STRING in obj:
-                    continue
-                texStr = obj[TEX_NAME_STRING]
-                try:
-                    img = getOrCreateImage(texStr, self.size)
-                except:
-                    continue
-
-                correctSize = self.size
-                if getObjectType(obj) == "AO":
-                    correctSize*=2
-
-                if img.size[0]!=correctSize or img.size[1]!=correctSize:
-                    img.scale(correctSize,correctSize)
-                    success+=1
 
         # update mesh names
         if self.meshName != "":
             for obj in objects:
 
                 if OBJ_NAME_STRING in obj and TEX_NAME_STRING in obj:
+
                     oldName = obj[OBJ_NAME_STRING]
                     texStr = obj[TEX_NAME_STRING]
                     try:
@@ -1335,6 +1312,8 @@ class UpdateLegacy(bpy.types.Operator):
                     except:
                         continue
                     texname = self.meshName + texStr[len(oldName)::]
+                    if img.name == texname and texStr == texname:
+                        continue
                     img.name = texname
                     obj[TEX_NAME_STRING] = texname
                     success+=1
@@ -1427,6 +1406,9 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_SUPERSAMPLE in obj:
                     obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
+                if not OBJ_TYPE_STRING in obj:
+                    obj[OBJ_TYPE_STRING] = "AO"
+                    success+=1
             if obj.name=="distance field":
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
@@ -1456,6 +1438,30 @@ class UpdateLegacy(bpy.types.Operator):
                     texname = obj[TEX_NAME_STRING]
                     img = getOrCreateImage(texname, obj[TEX_SIZE_INT])
                     obj[EDGE_HIGHLIGHT_TEXTURE] = img
+                    success+=1
+
+        # resize images
+        if self.size != 0:
+            for obj in objects:
+                if not TEX_SIZE_INT in obj or obj[TEX_SIZE_INT] != self.size:
+                    obj[TEX_SIZE_INT] = self.size
+                    success+=1
+
+            for obj in objects:
+                if not TEX_NAME_STRING in obj:
+                    continue
+                texStr = obj[TEX_NAME_STRING]
+                try:
+                    img = getOrCreateImage(texStr, self.size)
+                except:
+                    continue
+
+                correctSize = self.size
+                if getObjectType(obj) == "AO":
+                    correctSize*=2
+
+                if img.size[0]!=correctSize or img.size[1]!=correctSize:
+                    img.scale(correctSize,correctSize)
                     success+=1
                 
         self.report({"INFO"},"Updated "+str(success)+" properties")
