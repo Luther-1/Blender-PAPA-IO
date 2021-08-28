@@ -654,6 +654,12 @@ class BakeSelectedObjects(bpy.types.Operator):
                     tex.pixels[idx + 1] = 0.0
                     tex.pixels[idx + 2] = 1.0
                     tex.pixels[idx + 3] = 1.0
+                elif getObjectType(obj) == "AO":
+                    idx = texSize[0] * texSize[1] * 4 - 4
+                    tex.pixels[idx] = 1.0
+                    tex.pixels[idx + 1] = 1.0
+                    tex.pixels[idx + 2] = 1.0
+                    tex.pixels[idx + 3] = 1.0
                 else:
                     tex.pixels[0] = tex.pixels[0] # force a reload, sometimes the texture won't update automatically after a bake
                 
