@@ -153,18 +153,69 @@ void drawTriangle(float* dst, int x0, int y0, int x1, int y1, int x2, int y2, in
     }
 }
 
-void generateEdgeHighlights( float* uvData, int uvLen, int width, int height, int thickness, float blur, float* dst ) {
+void generateEdgeHighlights( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int thickness, float blur, float* dst ) {
 
     float fwidth =  (float) width;
     float fheight = (float) height;
 
-    // start by drawing all the lines to the array
+    char* areaMask;
+
+    // generate a mask of the inside of the UVs
+    if(thickness <= 1) {
+        const float subtract = 0.5; 
+        #pragma omp parallel for
+        for( int i=0; i<tuvLen; i+=6 ) {
+            int x0 = abs((int)round(tuvData[i] * fwidth - subtract));
+            int y0 = abs((int)round(tuvData[i + 1] * fheight - subtract));
+            int x1 = abs((int)round(tuvData[i + 2] * fwidth - subtract));
+            int y1 = abs((int)round(tuvData[i + 3] * fheight - subtract));
+            int x2 = abs((int)round(tuvData[i + 4] * fwidth - subtract));
+            int y2 = abs((int)round(tuvData[i + 5] * fheight - subtract));
+            drawTriangle( dst, x0, y0, x1, y1, x2, y2, width, 1.0f);
+        }
+
+        #pragma omp parallel for
+        for( int i=0; i<uvLen; i+=4 ) {
+            int x0 = abs((int)round(uvData[i] * fwidth - subtract));
+            int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
+            int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
+            int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
+            drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
+        }
+
+        // now copy the mask and selectively erode to fix inaccuracies
+        areaMask = (char*)calloc(width*height,sizeof(char));
+        #pragma omp parallel for collapse(2)
+        for ( int x=0;x<width;x++) {
+            for ( int y=0;y<height;y++) {
+                if(pixelSet(dst,x,y,width,height)) {
+                    int j;
+                    const int offsetX[4] = {0,-1,1,0};
+                    const int offsetY[4] = {-1,0,0,1};
+                    for(j=0;j<4;j++) {
+                        if(!pixelSet( dst, x+offsetX[j], y+offsetY[j], width, height )) {
+                            break;
+                        }
+                    }
+                    if( j == 4 ) {
+                        areaMask[y*width+x] = 1;
+                    }
+                }
+            }
+        }
+
+        // reset dst
+        memset(dst,0,width * height * 4 * sizeof(float));
+    }
+
+    // draw the actual lines to the array
     #pragma omp parallel for
     for( int i=0; i<uvLen; i+=4 ) {
-        int x0 = abs((int)round(uvData[i] * fwidth - 0.5));
-        int y0 = abs((int)round(uvData[i + 1] * fheight - 0.5));
-        int x1 = abs((int)round(uvData[i + 2] * fwidth - 0.5));
-        int y1 = abs((int)round(uvData[i + 3] * fheight - 0.5));
+        const float subtract = 0.5; 
+        int x0 = abs((int)round(uvData[i] * fwidth - subtract));
+        int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
+        int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
+        int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
         drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
     }
 
@@ -210,6 +261,39 @@ void generateEdgeHighlights( float* uvData, int uvLen, int width, int height, in
         }
         free(mask1);
         free(mask2);
+    } else {
+        // selectively dilate outwards to fix errors with diagonal lines
+        char* tMask = (char*)calloc( width * height, sizeof(char) );
+
+        #pragma omp parallel for collapse(2)
+        for ( int x=0; x<width; x++) {
+            for ( int y=0; y<height; y++) {
+                if (pixelSetMask( areaMask, x, y, width, height )) {
+                    continue;
+                }
+
+                for(int j=0;j<9;j++) {
+                    int ox = x+j % 3 - 1;
+                    int oy = y+j / 3 - 1;
+                    if(pixelSet( dst, ox, oy, width, height )) {
+                        tMask[y * width + x] = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        #pragma omp parallel for collapse(2)
+        for ( int x=0;x<width;x++) {
+            for ( int y=0;y<height;y++) {
+                if(pixelSetMask( tMask, x, y, width, height )) {
+                    setPixel( dst, x, y, width, 1.0, 1.0, 1.0, 1.0 );
+                }
+            }
+        }
+
+        free(areaMask);
+        free(tMask);
     }
 
     if (blur != 0.0) {
@@ -264,38 +348,23 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
 
     #pragma omp parallel for
     for( int i=0; i<tuvLen; i+=6 ) {
-        int x0 = abs((int)round(tuvData[i] * fwidth - 0.5));
-        int y0 = abs((int)round(tuvData[i + 1] * fheight - 0.5));
-        int x1 = abs((int)round(tuvData[i + 2] * fwidth - 0.5));
-        int y1 = abs((int)round(tuvData[i + 3] * fheight - 0.5));
-        int x2 = abs((int)round(tuvData[i + 4] * fwidth - 0.5));
-        int y2 = abs((int)round(tuvData[i + 5] * fheight - 0.5));
+        const float subtract = 0.5;
+        int x0 = abs((int)round(tuvData[i] * fwidth - subtract));
+        int y0 = abs((int)round(tuvData[i + 1] * fheight - subtract));
+        int x1 = abs((int)round(tuvData[i + 2] * fwidth - subtract));
+        int y1 = abs((int)round(tuvData[i + 3] * fheight - subtract));
+        int x2 = abs((int)round(tuvData[i + 4] * fwidth - subtract));
+        int y2 = abs((int)round(tuvData[i + 5] * fheight - subtract));
         drawTriangle( dst, x0, y0, x1, y1, x2, y2, width, 1.0f);
     }
 
     // now copy the mask
-    char* tmask = (char*)calloc(width*height,sizeof(char));
+    char* mask = (char*)calloc(width*height,sizeof(char));
     #pragma omp parallel for collapse(2)
     for ( int x=0;x<width;x++) {
         for ( int y=0;y<height;y++) {
             if(pixelSet(dst,x,y,width,height)) {
-                tmask[y*width+x] = 1;
-            }
-        }
-    }
-
-    // dilate the mask once
-    char* mask = (char*)calloc( width * height, sizeof(char) );
-    #pragma omp parallel for collapse(2)
-    for ( int x=0; x<width; x++) {
-        for ( int y=0; y<height; y++) {
-            for(int j=0;j<9;j++) {
-                int ox = x+j % 3 - 1;
-                int oy = y+j / 3 - 1;
-                if(pixelSetMask( tmask, ox, oy, width, height )) {
-                    mask[y * width + x] = 1;
-                    break;
-                }
+                mask[y*width+x] = 1;
             }
         }
     }
@@ -316,10 +385,11 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
     // draw all UV lines
     #pragma omp parallel for
     for( int i=0; i<uvLen; i+=4 ) {
-        int x0 = abs((int)round(uvData[i] * fwidth - 0.5));
-        int y0 = abs((int)round(uvData[i + 1] * fheight - 0.5));
-        int x1 = abs((int)round(uvData[i + 2] * fwidth - 0.5));
-        int y1 = abs((int)round(uvData[i + 3] * fheight - 0.5));
+        const float subtract = 0.5;
+        int x0 = abs((int)round(uvData[i] * fwidth - subtract));
+        int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
+        int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
+        int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
         drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
     }
 
@@ -390,7 +460,6 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
     free(seenPixels);
     free(mapping);
     free(mask);
-    free(tmask);
 
     *retVal = (float) distSum / (float) distPixels * 4;
 }

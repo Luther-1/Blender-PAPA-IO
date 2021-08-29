@@ -869,6 +869,23 @@ class TweakEdgeHighlights(bpy.types.Operator):
                 uvs.append(c4)
         return uvs
 
+    def getUvsTriangulated(self, mesh):
+        selectObject(mesh)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        uvs = [] # [x1,y1,x2,y2,...]
+
+        uv = mesh.data.uv_layers[0].data
+
+        polygons = mesh.data.polygons
+
+        mesh.data.calc_loop_triangles()
+        for tri in mesh.data.loop_triangles:
+            for x in range(3):
+                uvData = uv[tri.loops[x]].uv
+                uvs.append(uvData[0])
+                uvs.append(uvData[1])
+        return uvs
+
     def processObject(self, obj, tex, thickness, blur):
 
         if not textureLibrary:
@@ -891,15 +908,21 @@ class TweakEdgeHighlights(bpy.types.Operator):
         outPointer = outData.buffer_info()[0]
 
         uvs = array('f',self.getUvs(obj))
+        uvPointer = uvs.buffer_info()[0]
+        numUvCoords = len(uvs)
 
         if len(uvs) == 0:
             self.report({"ERROR"},"Model has no freestyle marked edges.")
             return
 
-        uvPointer = uvs.buffer_info()[0]
-        numUvCoords = len(uvs)
-        textureLibrary.generateEdgeHighlights(ctypes.cast(uvPointer,ctypes.POINTER(ctypes.c_float)),
-                    ctypes.c_int(numUvCoords), ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_int(thickness), ctypes.c_float(blur), 
+        tuvs = array('f',self.getUvsTriangulated(obj))
+        tuvPointer = tuvs.buffer_info()[0]
+        numTuvCoords = len(tuvs)
+
+
+        textureLibrary.generateEdgeHighlights(ctypes.cast(uvPointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numUvCoords),
+                    ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numTuvCoords),
+                    ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_int(thickness), ctypes.c_float(blur), 
                     ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
 
         tex.pixels = outData
@@ -1482,8 +1505,8 @@ textureLibrary = None
 if path.exists(libPath):
     try:
         textureLibrary = ctypes.CDLL(libPath,winmode=0)
-        textureLibrary.generateEdgeHighlights.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                ctypes.c_float, ctypes.POINTER(ctypes.c_float))
+        textureLibrary.generateEdgeHighlights.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateEdgeHighlights.resType = None
 
         textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int,
