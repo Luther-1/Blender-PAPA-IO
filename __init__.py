@@ -509,7 +509,7 @@ class SetupBake(bpy.types.Operator):
     
         # create the AO object
         texname = name+"_ao_bake"
-        aoTex = getOrCreateImage(texname,texSize * 2)
+        aoTex = getOrCreateImage(texname,texSize)
         ao = duplicateObject(obj,"ao")
         ao.data.materials.clear()
         ao.location[0]+=ao.dimensions.x * 6
@@ -517,7 +517,7 @@ class SetupBake(bpy.types.Operator):
         ao[OBJ_TYPE_STRING] = "AO"
         ao[TEX_NAME_STRING]=texname
         ao[TEX_SHOULD_BAKE] = True
-        ao[TEX_SHOULD_SUPERSAMPLE] = False
+        ao[TEX_SHOULD_SUPERSAMPLE] = True
         ao[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         if ao.dimensions.x < 10:
             ao.location[0]+= ao.dimensions.x
@@ -1462,12 +1462,8 @@ class UpdateLegacy(bpy.types.Operator):
                 except:
                     continue
 
-                correctSize = self.size
-                if getObjectType(obj) == "AO":
-                    correctSize*=2
-
-                if img.size[0]!=correctSize or img.size[1]!=correctSize:
-                    img.scale(correctSize,correctSize)
+                if img.size[0]!=self.size or img.size[1]!=self.size:
+                    img.scale(self.size,self.size)
                     success+=1
                 
         self.report({"INFO"},"Updated "+str(success)+" properties")
