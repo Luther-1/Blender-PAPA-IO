@@ -356,6 +356,8 @@ class SetupDiffuse(bpy.types.Operator):
                 if space.type == "VIEW_3D":
                     space.shading.type = "MATERIAL"
 
+        bpy.context.scene.render.engine = 'CYCLES'
+
         
 
 class SetupBake(bpy.types.Operator):
@@ -365,18 +367,23 @@ class SetupBake(bpy.types.Operator):
     bl_options = {'UNDO'}
     
     def execute(self, context):
-        obj = bpy.context.active_object
-        if not obj:
-            self.report({'ERROR'},"No Object given")
+        diffuse = None
+        for obj in bpy.context.selected_objects:
+            if getObjectType(obj) == "DIFFUSE":
+                diffuse = obj
+                break
+
+        if not diffuse:
+            self.report({'ERROR'},"Diffuse object not given")
 
         try:
-            size = obj[TEX_SIZE_INT]
-            name = obj[OBJ_NAME_STRING]
+            size = diffuse[TEX_SIZE_INT]
+            name = diffuse[OBJ_NAME_STRING]
         except:
             self.report({'ERROR'},"Selected object must have been previously created by \"setup diffuse\"")
             return {'CANCELLED'}
 
-        self.setupObject(obj, size, name)
+        self.setupObject(diffuse, size, name)
 
         return {'FINISHED'}
     
