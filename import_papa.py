@@ -545,7 +545,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             texNormal.image = normal
             normal.colorspace_settings.name = "Non-Color"
             blenderMaterial.node_tree.links.new(bsdf.inputs["Normal"], texNormal.outputs["Color"])
-            texNormal.location.x = bsdf.location.x - 1800
+            texNormal.location.x = bsdf.location.x - 2100
             texNormal.location.y = bsdf.location.y - 875
 
             # normal in PA is a dual channel normal.
@@ -557,23 +557,50 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             # add searate node
             sepRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
             blenderMaterial.node_tree.links.new(sepRGB.inputs[0], texNormal.outputs["Color"]) # link normal to separate
-            sepRGB.location.x = bsdf.location.x - 1450
+            sepRGB.location.x = bsdf.location.x - 1750
             sepRGB.location.y = bsdf.location.y - 750
+
+            # (1 - green)
+            invGreen = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
+            invGreen.operation = "SUBTRACT"
+            blenderMaterial.node_tree.links.new(invGreen.inputs[1], sepRGB.outputs["G"])
+            invGreen.inputs[0].default_value=1
+            invGreen.location.x = bsdf.location.x - 1100
+            invGreen.location.y = bsdf.location.y - 750
+
+
+            # Green (0,1) -> (-1,1)
+            multiplyAddGreen = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
+            multiplyAddGreen.operation = "MULTIPLY_ADD"
+            blenderMaterial.node_tree.links.new(multiplyAddGreen.inputs[0], sepRGB.outputs["G"])
+            multiplyAddGreen.inputs[1].default_value=2
+            multiplyAddGreen.inputs[2].default_value=-1
+            multiplyAddGreen.location.x = bsdf.location.x - 1550
+            multiplyAddGreen.location.y = bsdf.location.y - 950
+
+            # Alpha (0,1) -> (-1,1)
+            multiplyAddAlpha = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
+            multiplyAddAlpha.operation = "MULTIPLY_ADD"
+            blenderMaterial.node_tree.links.new(multiplyAddAlpha.inputs[0], texNormal.outputs["Alpha"])
+            multiplyAddAlpha.inputs[1].default_value=2
+            multiplyAddAlpha.inputs[2].default_value=-1
+            multiplyAddAlpha.location.x = bsdf.location.x - 1550
+            multiplyAddAlpha.location.y = bsdf.location.y - 1150
 
             # Green ^ 2
             multiplyGreen = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
             multiplyGreen.operation = "MULTIPLY"
-            blenderMaterial.node_tree.links.new(multiplyGreen.inputs[0], sepRGB.outputs["G"])
-            blenderMaterial.node_tree.links.new(multiplyGreen.inputs[1], sepRGB.outputs["G"])
-            multiplyGreen.location.x = bsdf.location.x - 1200
+            blenderMaterial.node_tree.links.new(multiplyGreen.inputs[0], multiplyAddGreen.outputs["Value"])
+            blenderMaterial.node_tree.links.new(multiplyGreen.inputs[1], multiplyAddGreen.outputs["Value"])
+            multiplyGreen.location.x = bsdf.location.x - 1300
             multiplyGreen.location.y = bsdf.location.y - 950
 
             # Alpha ^ 2
             multiplyAlpha = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
             multiplyAlpha.operation = "MULTIPLY"
-            blenderMaterial.node_tree.links.new(multiplyAlpha.inputs[0], texNormal.outputs["Alpha"])
-            blenderMaterial.node_tree.links.new(multiplyAlpha.inputs[1], texNormal.outputs["Alpha"])
-            multiplyAlpha.location.x = bsdf.location.x - 1200
+            blenderMaterial.node_tree.links.new(multiplyAlpha.inputs[0], multiplyAddAlpha.outputs["Value"])
+            blenderMaterial.node_tree.links.new(multiplyAlpha.inputs[1], multiplyAddAlpha.outputs["Value"])
+            multiplyAlpha.location.x = bsdf.location.x - 1300
             multiplyAlpha.location.y = bsdf.location.y - 1150
 
             # Combine terms
@@ -581,7 +608,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             addGreenAlpha.operation = "ADD"
             blenderMaterial.node_tree.links.new(addGreenAlpha.inputs[0], multiplyGreen.outputs["Value"])
             blenderMaterial.node_tree.links.new(addGreenAlpha.inputs[1], multiplyAlpha.outputs["Value"])
-            addGreenAlpha.location.x = bsdf.location.x - 1000
+            addGreenAlpha.location.x = bsdf.location.x - 1100
             addGreenAlpha.location.y = bsdf.location.y - 1050
 
             # 1 - (G^2 + A^2)
@@ -589,7 +616,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             subtract.operation = "SUBTRACT"
             subtract.inputs[0].default_value = 1
             blenderMaterial.node_tree.links.new(subtract.inputs[1], addGreenAlpha.outputs["Value"])
-            subtract.location.x = bsdf.location.x - 850
+            subtract.location.x = bsdf.location.x - 950
             subtract.location.y = bsdf.location.y - 1050
 
             # sqrt(1 - (G^2 + A^2))
@@ -597,13 +624,13 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             power.operation = "POWER"
             blenderMaterial.node_tree.links.new(power.inputs[0], subtract.outputs["Value"])
             power.inputs[1].default_value = 0.5
-            power.location.x = bsdf.location.x - 700
+            power.location.x = bsdf.location.x - 800
             power.location.y = bsdf.location.y - 1050
 
             # recombine back into vector data
             combineXYZ = blenderMaterial.node_tree.nodes.new("ShaderNodeCombineXYZ")
             blenderMaterial.node_tree.links.new(combineXYZ.inputs["X"], texNormal.outputs["Alpha"])
-            blenderMaterial.node_tree.links.new(combineXYZ.inputs["Y"], sepRGB.outputs["G"])
+            blenderMaterial.node_tree.links.new(combineXYZ.inputs["Y"], invGreen.outputs["Value"])
             blenderMaterial.node_tree.links.new(combineXYZ.inputs["Z"], power.outputs["Value"])
             combineXYZ.location.x = bsdf.location.x - 550
             combineXYZ.location.y = bsdf.location.y - 850
