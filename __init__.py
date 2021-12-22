@@ -2,7 +2,7 @@ bl_info = {
     "name": "Planetary Annihilation Legion Utils",
     "author": "Luther",
     "version": (1, 0, 0),
-    "blender": (2, 90, 0),
+    "blender": (3, 0, 0),
     "location": "Search",
     "description": "Various utility functions",
     "warning": "",
@@ -12,9 +12,10 @@ bl_info = {
 }
 
 import bpy
+from bpy_extras import mesh_utils;
 from mathutils import Vector
 from bpy.props import *
-from math import radians, log2
+from math import inf, radians, log2
 from array import array
 from os import path
 import ctypes
@@ -645,7 +646,7 @@ class BakeSelectedObjects(bpy.types.Operator):
                 selectObject(obj)
 
                 if getObjectType(obj) == "AO":
-                    bpy.ops.object.bake(pass_filter={"AO"},type="AO",margin=128)
+                    bpy.ops.object.bake(type="AO",margin=128)
                     self.alterUvs(obj,0,1)
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
                     self.alterUvs(obj,0,-1)
@@ -746,8 +747,9 @@ class CalulateEdgeSharp(bpy.types.Operator):
     bl_idname = "calculate_edges.legion_utils"
     bl_label = "Legion Calculate Edges"
     bl_options = {'REGISTER','UNDO'}
+    DEFAULT_ANGLE = radians(10)
 
-    angleLimit: FloatProperty(name="Max Angle",description="The max angle before being marked", min=0, max=radians(180), default=radians(10), subtype='ANGLE')
+    angleLimit: FloatProperty(name="Max Angle",description="The max angle before being marked", min=0, max=radians(180), default=DEFAULT_ANGLE, subtype='ANGLE')
     markLoose: BoolProperty(name="Mark Loose", description="Marks loose edges with freestyle mark", default=True)
     
     def execute(self, context):
@@ -802,8 +804,15 @@ class TweakEdgeHighlights(bpy.types.Operator):
     bl_label = "Legion Tweak Edge Highlights"
     bl_options = {'REGISTER','UNDO'}
 
-    lineThickness: IntProperty(name="Width", description="The thickness to draw the edge highlights at",min=1,max=50,default=1)
-    blurAmount: FloatProperty(name="Blur",description="The amount to blur the edge highlights", min=0, max=50, default=1)
+    lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50,default=1.5)
+    blurAmount: FloatProperty(name="Blur",description="The amount to blur the edge highlights", min=0, max=50, default=0)
+
+    lineThickness2: FloatProperty(name="Redraw Width", description="The thickness to draw the edge highlights at for the second pass",min=0,max=50,default=1)
+    blurAmount2: FloatProperty(name="Redraw Blur",description="The amount to blur the edge highlights for the second pass", min=0, max=50, default=0)
+
+    maxTaper: FloatProperty(name="Max Taper Angle",description="The largest angle that tapering is applied", min=0, max=radians(90), default=radians(45), subtype='ANGLE')
+    minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(90), default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
+    taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.25)
     
     def execute(self, context):
         obj = bpy.context.active_object
@@ -824,7 +833,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         if not obj:
             self.report({'ERROR'},"No Object given")
             return {'CANCELLED'}
-        
+
         try:
             self.lineThickness = obj[EDGE_HIGHLIGHT_DILATE]
         except:
@@ -833,14 +842,14 @@ class TweakEdgeHighlights(bpy.types.Operator):
         try:
             self.blurAmount = obj[EDGE_HIGHLIGHT_BLUR]
         except:
-                pass
+            pass
         return self.execute(context)
 
 
-    def getUvs(self, mesh):
+    def getLines(self, mesh, islands, baseThickness, baseBlur):
         selectObject(mesh)
         bpy.ops.object.mode_set(mode='OBJECT')
-        uvs = [] # [x1,y1,x2,y2,...]
+        lines = [] # [num_lines_in_island, islandIdx, [x1,y1,x2,y2, thickness, blur...]...]
 
         if len(mesh.data.uv_layers) == 0:
             self.report({'ERROR'},"Mesh has no UV layer")
@@ -850,43 +859,79 @@ class TweakEdgeHighlights(bpy.types.Operator):
         edges = mesh.data.edges
         polygons = mesh.data.polygons
         loops = mesh.data.loops
-        
-        for poly in polygons:
-            l = len(poly.loop_indices)
-            for x in range(l):
-                loopIdx = poly.loop_indices[x]
-                edge = edges[loops[loopIdx].edge_index]
-                if not edge.use_freestyle_mark:
-                    continue
-                loopIdx2 = poly.loop_indices[(x + 1) % l]
-                c1 = uv[loopIdx].uv[0]
-                c2 = uv[loopIdx].uv[1]
-                c3 = uv[loopIdx2].uv[0]
-                c4 = uv[loopIdx2].uv[1]
-                uvs.append(c1)
-                uvs.append(c2)
-                uvs.append(c3)
-                uvs.append(c4)
-        return uvs
 
-    def getUvsTriangulated(self, mesh):
+        for islandIdx in range(len(islands)):
+            lines.append(-1)
+            count = 0
+            arrIdx = len(lines) - 1
+            lines.append(float(islandIdx))
+            for poly in islands[islandIdx]:
+                polygon = polygons[poly]
+                l = len(polygon.loop_indices)
+                for x in range(l):
+                    loopIdx = polygon.loop_indices[x]
+                    edge = edges[loops[loopIdx].edge_index]
+                    if not edge.use_freestyle_mark:
+                        continue
+                    loopIdx2 = polygon.loop_indices[(x + 1) % l]
+                    c1 = uv[loopIdx].uv[0]
+                    c2 = uv[loopIdx].uv[1]
+                    c3 = uv[loopIdx2].uv[0]
+                    c4 = uv[loopIdx2].uv[1]
+                    lines.append(c1)
+                    lines.append(c2)
+                    lines.append(c3)
+                    lines.append(c4)
+                    lines.append(baseThickness)
+                    lines.append(baseBlur)
+                    count+=1
+            lines[arrIdx] = count
+        return lines
+
+    def getOrderedUvsTriangulated(self, mesh, islandMap):
         selectObject(mesh)
         bpy.ops.object.mode_set(mode='OBJECT')
-        uvs = [] # [x1,y1,x2,y2,...]
 
         uv = mesh.data.uv_layers[0].data
 
-        polygons = mesh.data.polygons
+        rawData = []
+        for x in range(len(islandMap)):
+            rawData.append([])
 
         mesh.data.calc_loop_triangles()
         for tri in mesh.data.loop_triangles:
+            arr = rawData[islandMap[tri.polygon_index]]
             for x in range(3):
                 uvData = uv[tri.loops[x]].uv
-                uvs.append(uvData[0])
-                uvs.append(uvData[1])
-        return uvs
+                c1 = uvData[0]
+                c2 = uvData[1]
+                arr.append(c1)
+                arr.append(c2)
+
+        triangulatedUvs = [] # [num_triangles_in_island, x1,y1,x2,y2,...]
+        for x in range(len(rawData)):
+            triangulatedUvs.append(len(rawData[x]) // 6)
+
+            for u in rawData[x]:
+                triangulatedUvs.append(u)
+        return triangulatedUvs
+
+    def getIslandMap(self, obj):
+        selectObject(obj)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        islands = mesh_utils.mesh_linked_uv_islands(obj.data)
+        islandMap = {} # [polyIdx] -> island idx
+        for x in range(len(islands)):
+            for poly in islands[x]:
+                islandMap[poly] = x
+
+        return islands, islandMap
+
 
     def processObject(self, obj, tex, thickness, blur):
+        # the following are converted into arrays of structs in C
+        # lineData: array of floats [num_lines, mask_idx, [start, end, thickness, blur...]...] ends when start has a value of -infinity
+        # triangulatedUVData: ordered list of float indices as follows [num_triangles, <triangulated UV data>...] ends when num_triangles has a value of -infinity
 
         if not textureLibrary:
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
@@ -894,6 +939,22 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         obj[EDGE_HIGHLIGHT_DILATE] = thickness
         obj[EDGE_HIGHLIGHT_BLUR] = blur
+
+        islands, islandMap = self.getIslandMap(obj)
+
+        lines = self.getLines(obj, islands, thickness, blur)
+        lines = array('f',lines)
+        linePointer = lines.buffer_info()[0]
+
+        if len(lines) == 0:
+            self.report({"ERROR"},"Model has no freestyle marked edges.")
+            return
+
+        triangulatedUvs = self.getOrderedUvsTriangulated(obj, islandMap)
+        tuvs = array('f',triangulatedUvs)
+        tuvPointer = tuvs.buffer_info()[0]
+
+        dataLen = len(islands)
         
         imgWidth = tex.size[0]
         imgHeight = tex.size[1]
@@ -907,23 +968,11 @@ class TweakEdgeHighlights(bpy.types.Operator):
             outData = array('f',[0.0] * imgDataSize)
         outPointer = outData.buffer_info()[0]
 
-        uvs = array('f',self.getUvs(obj))
-        uvPointer = uvs.buffer_info()[0]
-        numUvCoords = len(uvs)
-
-        if len(uvs) == 0:
-            self.report({"ERROR"},"Model has no freestyle marked edges.")
-            return
-
-        tuvs = array('f',self.getUvsTriangulated(obj))
-        tuvPointer = tuvs.buffer_info()[0]
-        numTuvCoords = len(tuvs)
-
-
-        textureLibrary.generateEdgeHighlights(ctypes.cast(uvPointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numUvCoords),
-                    ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numTuvCoords),
-                    ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_int(thickness), ctypes.c_float(blur), 
-                    ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
+        textureLibrary.generateEdgeHighlights(  ctypes.cast(linePointer,ctypes.POINTER(ctypes.c_float)),
+                                                ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)),
+                                                ctypes.c_int(dataLen),
+                                                ctypes.c_int(imgWidth), ctypes.c_int(imgHeight),
+                                                ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
 
         tex.pixels = outData
 
@@ -1505,8 +1554,8 @@ textureLibrary = None
 if path.exists(libPath):
     try:
         textureLibrary = ctypes.CDLL(libPath,winmode=0)
-        textureLibrary.generateEdgeHighlights.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int,
-                ctypes.c_int, ctypes.c_int, ctypes.c_float, ctypes.POINTER(ctypes.c_float))
+        textureLibrary.generateEdgeHighlights.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int,
+                ctypes.c_int, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateEdgeHighlights.resType = None
 
         textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int,

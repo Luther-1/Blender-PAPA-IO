@@ -1,6 +1,294 @@
+#include<omp.h>
 #include<stdlib.h>
+#include<stdio.h>
 #include<math.h>
 #include<string.h>
+
+#define OUTSIDE_IMAGE(x,y,w,h) x < 0 || x >= w || y < 0 || y >= h
+#define IMAGE_INDEX(x,y,w) (y * w + x)
+#define CLAMP(val,min,max) ((val < min) ? (min) : ((val > max) ? (max) : (val)))
+
+typedef struct LineData {
+    float xStart;
+    float yStart;
+    float xEnd;
+    float yEnd;
+    float thickness;
+    float blur;
+
+} LineData;
+
+typedef struct IslandLines {
+    int numLines;
+    int islandIdx;
+    LineData* lineData;
+
+} IslandLines;
+
+typedef struct Island {
+    int numTriangles;
+    float* triangles;
+} Island;
+
+typedef struct ImageData {
+    int width;
+    int height;
+    float* scratch;
+} ImageData;
+
+typedef struct ShortPair {
+    short x;
+    short y;
+} ShortPair;
+
+typedef struct ThreadData {
+    float* scratch;
+    ShortPair topLeft;
+    ShortPair bottomRight;
+} ThreadData;
+
+typedef struct BitmaskData {
+    unsigned long long* bitmask;
+    unsigned long long* dilatedBitmask;
+} BitmaskData;
+
+typedef struct EdgeAwareData {
+    unsigned long long* bitmask;
+    unsigned long long maskIdx;
+    void (*writeFunc)(int, int, int, int, void*, void*);
+    void* argData;
+} EdgeAwareData;
+
+typedef struct EmbeddedWriteData {
+    void (*writeFunc)(int, int, int, int, void*, void*);
+    void* argData;
+} EmbeddedWriteData;
+
+typedef struct BrushData {
+    void* brush;
+    short brushWidth;
+    short brushHeight;
+} BrushData;
+
+void clearThreadData(ThreadData* data);
+
+ThreadData* createThreadData(int numThreads, ImageData* imgData) {
+    int width = imgData->width;
+    int height = imgData->height;
+    ThreadData* data = (ThreadData*) malloc(numThreads * sizeof(ThreadData));
+    for(int i =0;i<numThreads;i++) {
+        // worst case scenario is two perfectly vertical lines, which this holds exactly
+        data[i].scratch = calloc(width * height, sizeof(float));
+        clearThreadData(data + i);
+    }
+    return data;
+    
+}
+
+BitmaskData* createBitmaskData(int width, int height) {
+    unsigned long long* bitmask = malloc(width * height * sizeof(unsigned long long));
+    unsigned long long* dilatedBitmask = malloc(width * height * sizeof(unsigned long long));
+    BitmaskData* data = malloc(sizeof(BitmaskData));
+    data->bitmask=bitmask;
+    data->dilatedBitmask=dilatedBitmask;
+    return data;
+}
+
+IslandLines* convertLineData(float* data, int numLines) {
+    IslandLines* lines = (IslandLines*) malloc(sizeof(IslandLines) * numLines);
+    int idx = 0;
+
+    for(int i = 0; i < numLines; i++) {
+        int numData = (int) (data[idx++] + 0.5f);
+        int maskIdx = ((int) (data[idx++] + 0.5f)) % 64;
+
+        lines[i] = (IslandLines) {numData, maskIdx, (LineData*)(data + idx)}; // evil
+        idx += numData * 6;
+    }
+
+    return lines;
+}
+
+Island* convertIslandData(float* islandData, int numIslands) {
+    Island* islands =  (Island*) malloc(sizeof(Island) * numIslands);
+    int idx = 0;
+
+    for(int i =0;i<numIslands;i++) {
+        int numTriangles = islandData[idx++];
+
+        islands[i] = (Island) {numTriangles, islandData + idx};
+        idx += numTriangles * 6;
+    }
+
+    return islands;
+}
+
+ImageData* createImageData(int width, int height) {
+    ImageData* img = (ImageData*) malloc(sizeof(ImageData));
+    img->width=width;
+    img->height=height;
+    img->scratch = calloc(width * height, sizeof(float));
+    return img;
+}
+
+BrushData* createBrushDataFloat(float thickness) {
+    BrushData* data = (BrushData*) malloc(sizeof(BrushData));
+    int width = floor(thickness) * 2 + 1;
+    int height = width;
+    data->brushWidth = width;
+    data->brushHeight = height;
+    
+    float* brush = (float*) malloc(sizeof(float) * width * height);
+    data->brush = brush;
+
+    int cx = width / 2;
+    int cy = height / 2;
+
+    for( int y = 0;y < height; y++) {
+        for(int x = 0;x < width; x++) {
+            int tx = x - cx;
+            int ty = y - cy;
+            float dist = thickness - sqrtf(ty*ty + tx*tx);
+            float val = CLAMP(dist, 0.0f, 1.0f);
+            int idx = IMAGE_INDEX(x,y,width);
+            brush[idx] = val;
+        }
+    }
+    return data;
+}
+
+void freeBrushData(BrushData* data) {
+    free(data->brush);
+    free(data);
+}
+
+void writeFourFloat(int x, int y, int w, int h, void* _data, void* _dst) {
+    
+    float* dst = (float*)_dst;
+    float* data = (float*)_data;
+
+    int index = IMAGE_INDEX(x,y,w) * 4;
+    dst[index + 0] = data[0];
+    dst[index + 1] = data[1];
+    dst[index + 2] = data[2];
+    dst[index + 3] = data[3];
+}
+
+void writeSingleFloat(int x, int y, int w, int h, void* _data, void* _dst) {
+    float* dst = (float*)_dst;
+    float data = *((float*)_data);
+
+    int index = IMAGE_INDEX(x,y,w);
+    dst[index] = data;
+}
+
+void write3x3Plus(int x, int y, int w, int h, void* _data, void* _dst) {
+    EmbeddedWriteData* data = (EmbeddedWriteData*)_data;
+    void (*writeFunc)(int, int, int, int, void*, void*) = data->writeFunc;
+    void* argData = data->argData;
+
+    const int offsetX[4] = {0,-1,1,0};
+    const int offsetY[4] = {-1,0,0,1};
+
+    (*writeFunc)(x, y, w, h, argData, _dst);
+    
+    for(int j=0;j<4;j++) {
+        const int ox = x+offsetX[j];
+        const int oy = y+offsetY[j];
+
+        if(OUTSIDE_IMAGE(ox,oy,w,h)) {
+            continue;
+        }
+        (*writeFunc)(ox, oy, w, h, argData, _dst);
+    }
+}
+
+void orSingleULL(int x, int y, int w, int h, void* _data, void* _dst) {
+    unsigned long long* dst = (unsigned long long*)_dst;
+    unsigned long long data = *((unsigned long long*)_data);
+
+    int index = IMAGE_INDEX(x,y,w);
+    dst[index] |= data;
+}
+
+void writeEdgeAware(int x, int y, int w, int h, void* _data, void* _dst) {
+    // for each neighbor, if any of their neighbors are not in the mask, draw to that pixel.
+    // runs 16 times per pixel.
+    const int offsetX[4] = {0,-1,1,0};
+    const int offsetY[4] = {-1,0,0,1};
+
+    EdgeAwareData* data = (EdgeAwareData*)_data;
+    unsigned long long* bitmask = data->bitmask;
+    unsigned long long maskIdx = data->maskIdx;
+    void (*writeFunc)(int, int, int, int, void*, void*) = data->writeFunc;
+
+    int j, k;
+    for(j=0;j<4;j++) {
+        const int lx = x+offsetX[j];
+        const int ly = y+offsetY[j];
+        if(OUTSIDE_IMAGE(lx,ly,w,h)) {
+            continue;
+        }
+
+        for(k=0;k<4;k++) {
+            const int lx2 = lx+offsetX[k];
+            const int ly2 = ly+offsetY[k];
+            if(OUTSIDE_IMAGE(lx2,ly2,w,h)) {
+                continue;
+            }
+
+            const int idx = IMAGE_INDEX(lx2,ly2,w);
+            if(!(bitmask[idx] & maskIdx)) {
+                (*writeFunc)(lx, ly, h, w, data->argData, _dst);
+                break;
+            }
+        }
+    }
+}
+
+void writeSingleFloatBrush(int x, int y, int w, int h, void* _data, void*_dst) {
+    BrushData* data = (BrushData*) _data;
+    int brushWidth = data->brushWidth;
+    int brushHeight = data->brushHeight;
+
+    int hw = brushWidth / 2;
+    int hh = brushHeight / 2;
+
+    float* dst = (float*)_dst;
+
+    for( int y2 = 0;y2 < brushHeight; y2++) {
+        for(int x2 = 0;x2 < brushWidth; x2++) {
+            int brushLocx = x2 - hw;
+            int brushLocy = y2 - hh;
+            int cx  = x + brushLocx;
+            int cy  = y + brushLocy;
+
+            if(OUTSIDE_IMAGE(cx,cy,w,h)) {
+                continue;
+            }
+
+            int brushIdx = IMAGE_INDEX(x2,y2,brushWidth);
+            int imageIdx = IMAGE_INDEX(cx,cy,w);
+            float v1 = ((float*)data->brush)[brushIdx];
+            float v2 = dst[imageIdx];
+            dst[imageIdx] = __max(v1,v2);
+        }
+    }
+}
+
+void freeStructData(BitmaskData* bitmask, IslandLines* lines, Island* islands, ThreadData* threadData, int numThreads, ImageData* imageData) {
+    free(bitmask->bitmask);
+    free(bitmask->dilatedBitmask);
+    free(bitmask);
+    free(lines);
+    free(islands);
+    for(int i =0;i<numThreads;i++) {
+        free(threadData[i].scratch);
+    }
+    free(threadData);
+    free(imageData->scratch);
+    free(imageData);
+}
 
 void setPixel(float* dst, int x, int y, int w, float r, float g, float b, float a) {
     int index = (y * w + x) << 2;
@@ -11,19 +299,19 @@ void setPixel(float* dst, int x, int y, int w, float r, float g, float b, float 
 }
 
 int pixelSet(float* dst, int x, int y, int w, int h) {
-    if(x < 0 || x >= w || y< 0 || y >=h)
+    if(OUTSIDE_IMAGE(x,y,w,h))
         return 0;
     return dst[(y * w + x) << 2] != 0;
 }
 
 int pixelSetMask(char* buf, int x, int y, int w, int h) {
-    if(x < 0 || x >= w || y< 0 || y >=h)
+    if(OUTSIDE_IMAGE(x,y,w,h))
         return 0;
     return buf[y * w + x] != 0;
 }
 
 int pixelSetMaskBoundary(char* buf, int x, int y, int w, int h) {
-    if(x < 0 || x >= w || y< 0 || y >=h)
+    if(OUTSIDE_IMAGE(x,y,w,h))
         return 1;
     return buf[y * w + x] != 0;
 }
@@ -58,7 +346,7 @@ int reflect(int M, int x) {
     return x;
 }
 
-void drawLine(float* dst, int x0, int y0, int x1, int y1 , int imgWidth, float r, float g, float b, float a) {
+void drawLine(void* dst, int x0, int y0, int x1, int y1, int imgWidth, int imgHeight, void* data, void (*writeFunc)(int, int, int, int, void*, void*)) {
     // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
     int dx = abs(x1-x0);
     int sx = x0<x1 ? 1 : -1;
@@ -67,23 +355,24 @@ void drawLine(float* dst, int x0, int y0, int x1, int y1 , int imgWidth, float r
     int err = dx + dy;
     int e2;
     while(1) {
-        setPixel(dst,x0,y0,imgWidth,r,g,b,a);
+        (*writeFunc)(x0,y0, imgWidth, imgHeight, data, dst);
         if(x0 == x1 && y0 == y1) {
             break;
         }
         e2 = 2 * err;
-        if(e2 >=dy) {
-            err+=dy;
-            x0+=sx;
+        if(e2 >= dy) {
+            err += dy;
+            x0 += sx;
         }
-        if(e2 <=dx) {
-            err+=dx;
-            y0+=sy;
+        if(e2 <= dx) {
+            err += dx;
+            y0 += sy;
         }
     }
 }
 
-void fillBottomFlatTriangle(float* dst, int x0, int y0, int x1, int y1, int x2, int y2, int imgWidth, float val) {
+void fillBottomFlatTriangle(void* dst, int x0, int y0, int x1, int y1, int x2, int y2, int imgWidth, int imgHeight, 
+                            void* data, void (*writeFunc)(int, int, int, int, void*, void*)) {
     float invSlope1 = (float)(x1 - x0) / (float)(y1 - y0);
     float invSlope2 = (float)(x2 - x0) / (float)(y2 - y0);
 
@@ -91,27 +380,29 @@ void fillBottomFlatTriangle(float* dst, int x0, int y0, int x1, int y1, int x2, 
     float cx2 = x0;
 
     for (int y=y0; y<=y2; y++) {
-        drawLine( dst, cx1, y, cx2,y, imgWidth, val, val, val, val );
+        drawLine(dst, cx1, y, cx2, y, imgWidth, imgHeight, data, writeFunc);
         cx1+=invSlope1;
         cx2+=invSlope2;
     }
 }
 
-void fillTopFlatTriangle(float* dst, int x0, int y0, int x1, int y1, int x2, int y2, int imgWidth, float val) {
+void fillTopFlatTriangle(void* dst, int x0, int y0, int x1, int y1, int x2, int y2, int imgWidth, int imgHeight,
+                         void* data, void (*writeFunc)(int, int, int, int, void*, void*)) {
     float invSlope1 = (float)(x2 - x0) / (float)(y2 - y0);
     float invSlope2 = (float)(x2 - x1) / (float)(y2 - y1);
 
     float cx1 = x2;
     float cx2 = x2;
 
-    for (int y=y2; y>y0; y--) {
-        drawLine( dst, cx1,y,cx2,y, imgWidth, val, val, val, val );
+    for (int y=y2; y>=y0; y--) {
+        drawLine(dst, cx1, y, cx2, y, imgWidth, imgHeight, data, writeFunc);
         cx1-=invSlope1;
         cx2-=invSlope2;
     }
 }
 
-void drawTriangle(float* dst, int x0, int y0, int x1, int y1, int x2, int y2, int imgWidth, float val) {
+void drawTriangle(  void* dst, int x0, int y0, int x1, int y1, int x2, int y2, int imgWidth, int imgHeight, 
+                    void* data, void (*writeFunc)(int, int, int, int, void*, void*)) {
     // http://www.sunshine2k.de/coding/java/TriangleRasterization/TriangleRasterization.html
     int y[3];
     int x[3];
@@ -142,324 +433,599 @@ void drawTriangle(float* dst, int x0, int y0, int x1, int y1, int x2, int y2, in
     }
 
     if(y[1] == y[2]) {
-        fillBottomFlatTriangle(dst,x[0],y[0],x[1],y[1],x[2],y[2],imgWidth,val);
+        fillBottomFlatTriangle(dst,x[0],y[0],x[1],y[1],x[2],y[2],imgWidth, imgHeight, data, writeFunc);
     } else if(y[0] == y[1]) {
-        fillTopFlatTriangle(dst,x[0],y[0],x[1],y[1],x[2],y[2],imgWidth,val);
+        fillTopFlatTriangle(dst,x[0],y[0],x[1],y[1],x[2],y[2],imgWidth, imgHeight, data, writeFunc);
     } else {
         int x3 = (int)(x[0] + ((float)(y[1] - y[0]) / (float)(y[2] - y[0])) * (x[2] - x[0]));
         int y3 = y[1];
-        fillBottomFlatTriangle(dst,x[0],y[0],x[1],y[1],x3,y3,imgWidth,val);
-        fillTopFlatTriangle(dst,x[1],y[1],x3,y3,x[2],y[2],imgWidth,val);
+        fillBottomFlatTriangle(dst,x[0],y[0],x[1],y[1],x3,y3,imgWidth, imgHeight, data, writeFunc);
+        fillTopFlatTriangle(dst,x[1],y[1],x3,y3,x[2],y[2],imgWidth, imgHeight, data, writeFunc);
     }
 }
 
-void generateEdgeHighlights( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int thickness, float blur, float* dst ) {
+void clearThreadData(ThreadData* threadData) {
+    threadData->topLeft.x=SHRT_MAX;
+    threadData->topLeft.y=SHRT_MAX;
+    threadData->bottomRight.x=0;
+    threadData->bottomRight.y=0;
+}
 
-    float fwidth =  (float) width;
-    float fheight = (float) height;
+void copyAndClearThreadScratch(BitmaskData* BitmaskData, unsigned long long maskIdx, ThreadData* threadData, ImageData* info) {
+    int width = info->width;
+    int height = info->height;
+    float* dst = info->scratch;
+    float* src = threadData->scratch;
 
-    char* areaMask;
+    unsigned long long* dilatedBitmask = BitmaskData->dilatedBitmask;
 
-    // generate a mask of the inside of the UVs
-    if(thickness <= 1) {
-        const float subtract = 0.5; 
-        #pragma omp parallel for
-        for( int i=0; i<tuvLen; i+=6 ) {
-            int x0 = abs((int)round(tuvData[i] * fwidth - subtract));
-            int y0 = abs((int)round(tuvData[i + 1] * fheight - subtract));
-            int x1 = abs((int)round(tuvData[i + 2] * fwidth - subtract));
-            int y1 = abs((int)round(tuvData[i + 3] * fheight - subtract));
-            int x2 = abs((int)round(tuvData[i + 4] * fwidth - subtract));
-            int y2 = abs((int)round(tuvData[i + 5] * fheight - subtract));
-            drawTriangle( dst, x0, y0, x1, y1, x2, y2, width, 1.0f);
-        }
+    ShortPair topLeft =     threadData->topLeft;
+    ShortPair bottomRight = threadData->bottomRight;
 
-        #pragma omp parallel for
-        for( int i=0; i<uvLen; i+=4 ) {
-            int x0 = abs((int)round(uvData[i] * fwidth - subtract));
-            int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
-            int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
-            int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
-            drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
-        }
+    int xmin = CLAMP(topLeft.x,0,width-1);
+    int xmax = CLAMP(bottomRight.x,0,width-1);
 
-        // now copy the mask and selectively erode to fix inaccuracies
-        areaMask = (char*)calloc(width*height,sizeof(char));
-        #pragma omp parallel for collapse(2)
-        for ( int x=0;x<width;x++) {
-            for ( int y=0;y<height;y++) {
-                if(pixelSet(dst,x,y,width,height)) {
-                    int j;
-                    const int offsetX[4] = {0,-1,1,0};
-                    const int offsetY[4] = {-1,0,0,1};
-                    for(j=0;j<4;j++) {
-                        if(!pixelSet( dst, x+offsetX[j], y+offsetY[j], width, height )) {
-                            break;
-                        }
-                    }
-                    if( j == 4 ) {
-                        areaMask[y*width+x] = 1;
-                    }
-                }
+    int ymin = CLAMP(bottomRight.y,0,height-1);
+    int ymax = CLAMP(topLeft.y,0,height-1);
+
+    for(int y = ymin; y<ymax; y++) {
+        for(int x = xmin; x<xmax; x++) {
+            int idx = IMAGE_INDEX(x,y,width);
+            if(dilatedBitmask[idx] & maskIdx) {
+                //#pragma omp atomic write
+                dst[idx] = __max(dst[idx], src[idx]);
             }
+            src[idx] = 0;
         }
-
-        // reset dst
-        memset(dst,0,width * height * 4 * sizeof(float));
     }
+}
 
-    // draw the actual lines to the array
-    #pragma omp parallel for
-    for( int i=0; i<uvLen; i+=4 ) {
-        const float subtract = 0.5; 
-        int x0 = abs((int)round(uvData[i] * fwidth - subtract));
-        int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
-        int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
-        int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
-        drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
+void fixMaskHoles(unsigned long long* mask, ImageData* data) {
+    int width = data->width;
+    int height = data->height;
+    const int offsetX[4] = {0,-1,1,0};
+    const int offsetY[4] = {-1,0,0,1};
+    int j;
+    for(int y =0;y<height;y++) {
+        for(int x=0;x<width;x++) {
+            unsigned long long test = -1; // all 1s
+            for(j=0;j<4;j++) {
+                if(!OUTSIDE_IMAGE(x+offsetX[j],y+offsetY[j],width,height)) {
+                    test &= mask[IMAGE_INDEX(x,y,width)];
+                }
+            }
+            mask[IMAGE_INDEX(x,y,width)] |= test;
+        }
     }
+}
 
-    // basically just dilate over and over
-    if(thickness > 1) {
-        char* mask1 = (char*)calloc( width * height, sizeof(char) );
-        #pragma omp parallel for collapse(2)
-        for ( int x=0; x<width; x++) {
-            for ( int y=0; y<height; y++) {
-                if(pixelSet( dst, x, y, width, height )) {
-                    mask1[y * width + x] = 1;
-                }
-            }
+void generateBitmask(BitmaskData* bitmaskData, ImageData* data, Island* islands, int startIdx, int endIdx) {
+    // clear the bitmask
+    unsigned long long* bitmask = bitmaskData->bitmask;
+    unsigned long long* dilatedBitmask = bitmaskData->dilatedBitmask;
+    memset(bitmask,0,data->width * data->height * sizeof(unsigned long long));
+    memset(dilatedBitmask,0,data->width * data->height * sizeof(unsigned long long));
+
+    float fwidth = (float)data->width;
+    float fheight = (float)data->height;
+    const float subtract = 0.0f;
+
+    //#pragma omp parallel for
+    for( int i=startIdx; i<endIdx; i++ ) {
+        Island island = islands[i];
+        int num = island.numTriangles * 6;
+        unsigned long long val[1] = {1ULL<<(i-startIdx)};
+        EmbeddedWriteData writeData;
+        writeData.writeFunc = orSingleULL;
+        writeData.argData = val;
+        for(int k = 0;k<num;k+=6) {
+            int x0 = abs((int)(island.triangles[k] * fwidth - subtract));
+            int y0 = abs((int)(island.triangles[k + 1] * fheight - subtract));
+            int x1 = abs((int)(island.triangles[k + 2] * fwidth - subtract));
+            int y1 = abs((int)(island.triangles[k + 3] * fheight - subtract));
+            int x2 = abs((int)(island.triangles[k + 4] * fwidth - subtract));
+            int y2 = abs((int)(island.triangles[k + 5] * fheight - subtract));
+            drawTriangle( (void*)bitmask, x0, y0, x1, y1, x2, y2, data->width, data->height, val, orSingleULL );
+            drawLine( (void*)bitmask, x0, y0, x1, y1, data->width, data->height, &writeData, write3x3Plus );
+            drawLine( (void*)bitmask, x1, y1, x2, y2, data->width, data->height, &writeData, write3x3Plus );
+            drawLine( (void*)bitmask, x2, y2, x0, y0, data->width, data->height, &writeData, write3x3Plus );
         }
-        char* mask2 = (char*)calloc( width * height, sizeof(char) );
+    }
+    // fixMaskHoles(bitmask, data);
 
-        for (int i = 1;i<thickness; i++) {
-            #pragma omp parallel for collapse(2)
-            for ( int x=0; x<width; x++) {
-                for ( int y=0; y<height; y++) {
-                    for(int j=0;j<9;j++) {
-                        int ox = x+j % 3 - 1;
-                        int oy = y+j / 3 - 1;
-                        if(pixelSetMask( mask1, ox, oy, width, height )) {
-                            mask2[y * width + x] = 1;
-                            break;
-                        }
-                    }
-                }
-            }
-            char* t = mask1;
-            mask1 = mask2;
-            mask2 = t;
-        }
+    // generate dilated bitmask
 
-        #pragma omp parallel for collapse(2)
-        for ( int x=0;x<width;x++) {
-            for ( int y=0;y<height;y++) {
-                if(pixelSetMask( mask1, x, y, width, height )) {
-                    setPixel( dst, x, y, width, 1.0, 1.0, 1.0, 1.0 );
-                }
-            }
-        }
-        free(mask1);
-        free(mask2);
-    } else {
-        // selectively dilate outwards to fix errors with diagonal lines
-        char* tMask = (char*)calloc( width * height, sizeof(char) );
+    int width = data->width;
+    int height = data->height;
 
-        #pragma omp parallel for collapse(2)
-        for ( int x=0; x<width; x++) {
-            for ( int y=0; y<height; y++) {
-                if (pixelSetMask( areaMask, x, y, width, height )) {
-                    continue;
-                }
+    #pragma omp parallel for collapse(2)
+    for ( int x=0; x<width; x++ ) {
+        for ( int y=0; y<height; y++ ) {
+            int idx = IMAGE_INDEX(x,y,width);
 
+            // only allow it to bleed outwards to pixels that are not already occupied
+            if(bitmask[idx]) {
+                dilatedBitmask[idx] = bitmask[idx];
+            } else {
+                unsigned long long val = 0;
                 for(int j=0;j<9;j++) {
                     int ox = x+j % 3 - 1;
                     int oy = y+j / 3 - 1;
-                    if(pixelSet( dst, ox, oy, width, height )) {
-                        tMask[y * width + x] = 1;
-                        break;
+
+                    if(OUTSIDE_IMAGE(ox,oy,width,height)) {
+                        continue;
                     }
+
+                    int idx = IMAGE_INDEX(ox,oy,width);
+                    val |= bitmask[idx];
                 }
+                
+                dilatedBitmask[idx] = val;
             }
         }
-
-        #pragma omp parallel for collapse(2)
-        for ( int x=0;x<width;x++) {
-            for ( int y=0;y<height;y++) {
-                if(pixelSetMask( tMask, x, y, width, height )) {
-                    setPixel( dst, x, y, width, 1.0, 1.0, 1.0, 1.0 );
-                }
-            }
-        }
-
-        free(areaMask);
-        free(tMask);
-    }
-
-    if (blur != 0.0) {
-        // finally, blur the result
-        int kw = (int)(blur + 2) * 2 + 1;
-        int kc = kw / 2; // center of the kernel
-        float* kernel = buildKernel(kw, blur);
-
-        float* temp = (float*)malloc(width*height*sizeof(float));
-
-        // y direction
-        #pragma omp parallel for collapse(2)
-        for(int y=0; y<height; y++) {
-            for(int x=0; x<width ;x++) {
-                float sum = 0;
-                for(int i = -kc;i<=kc;i++) {
-                    int y1 = reflect(height,y-i);
-                    sum+=kernel[i+kc] * pixelSet(dst,x,y1,width, height);
-                }
-                temp[y*width+x] = sum;
-            }
-        }
-
-        // x direction
-        #pragma omp parallel for collapse(2)
-        for(int y=0; y<height; y++) {
-            for(int x=0; x<width; x++) {
-                float sum = 0;
-                for(int i = -kc;i<=kc;i++) {
-                    int x1 = reflect(width,x-i);
-                    sum+=kernel[i+kc] * temp[y*width+x1];
-                }
-                setPixel( dst, x, y, width, 1.0, 1.0, 1.0, sum);
-            }
-        }
-        free(temp);
-        free(kernel);
     }
 }
+
+void drawLineSegmentEdgeAware(unsigned long long* bitmask, unsigned long long maskIdx, LineData* lineData, ImageData* imageData, ThreadData* threadData) {
+
+    float fwidth = imageData->width;
+    float fheight = imageData->height;
+
+    const float subtract = 0.0f;
+    const float colour[1] = {1.0f};
+
+    LineData data = *lineData;
+    int x0 = abs((int)(data.xStart * fwidth - subtract));
+    int y0 = abs((int)(data.yStart * fheight - subtract));
+    int x1 = abs((int)(data.xEnd * fwidth - subtract));
+    int y1 = abs((int)(data.yEnd * fheight - subtract));
+
+    int minX = __min(x0,x1);
+    int maxX = __max(x0,x1);
+
+    int minY = __min(y0,y1);
+    int maxY = __max(y0,y1);
+
+    threadData->topLeft.x=minX - 1;
+    threadData->topLeft.y=maxY + 1;
+
+    threadData->bottomRight.x=maxX + 1;
+    threadData->bottomRight.y=minY - 1;
+
+    EdgeAwareData argData;
+    argData.bitmask = bitmask;
+    argData.maskIdx = maskIdx;
+    argData.writeFunc = writeSingleFloat;
+    argData.argData = (void*)colour;
+
+    drawLine( threadData->scratch, x0, y0, x1, y1, imageData->width, imageData->height, (void*)(&argData), writeEdgeAware );
+    drawLine( threadData->scratch, x1, y1, x0, y0, imageData->width, imageData->height, (void*)(&argData), writeEdgeAware );
+}
+
+void drawLineSegmentThickness(LineData* lineData, ImageData* imageData, ThreadData* threadData) {
+
+    float fwidth = imageData->width;
+    float fheight = imageData->height;
+
+    const float subtract = 0.0f;
+
+    LineData data = *lineData;
+    int x0 = abs((int)(data.xStart * fwidth - subtract));
+    int y0 = abs((int)(data.yStart * fheight - subtract));
+    int x1 = abs((int)(data.xEnd * fwidth - subtract));
+    int y1 = abs((int)(data.yEnd * fheight - subtract));
+
+    float thickness = data.thickness;
+    BrushData* brushData = createBrushDataFloat(thickness);
+
+    int ceilThickness = ceil(thickness);
+
+    threadData->topLeft.x -= ceilThickness;
+    threadData->topLeft.y += ceilThickness;
+
+    threadData->bottomRight.x += ceilThickness;
+    threadData->bottomRight.y -= ceilThickness;
+
+    drawLine( threadData->scratch, x0, y0, x1, y1, imageData->width, imageData->height, (void*)brushData, writeSingleFloatBrush );
+
+    freeBrushData(brushData);
+}
+
+void drawLineSegment(BitmaskData* bitmaskData, unsigned long long maskIdx, LineData* lineData, ImageData* imageData, ThreadData* threadData) {
+
+    // preliminary pass to get the edges that the line would miss
+    drawLineSegmentEdgeAware(bitmaskData->bitmask, maskIdx, lineData, imageData, threadData);
+
+    drawLineSegmentThickness(lineData, imageData, threadData);
+
+    // blurLineSegment(data, imageData, threadData);
+
+}
+
+void drawLineSegments(float* dst, BitmaskData* bitmaskData, IslandLines* lines, ImageData* imageData, ThreadData* threadData) {
+    int iters = lines->numLines;
+    unsigned long long islandIdx = 1ULL<<(lines->islandIdx);
+    for(int i = 0;i<iters;i++) {
+        LineData* line = lines->lineData + i;
+        drawLineSegment(bitmaskData, islandIdx, line, imageData, threadData);
+        copyAndClearThreadScratch(bitmaskData, islandIdx, threadData, imageData);
+        clearThreadData(threadData);
+    }
+}
+
+void copyTempToDst(ImageData* imageData, float* dst) {
+    int width = imageData->width;
+    int height = imageData->height;
+    int numElements = width * height * 4;
+    float* scratch = imageData->scratch;
+    for(int i = 0;i<numElements;i+=4) {
+        int sIdx = i / 4;
+
+        // hard coded white to save memory.
+        dst[i + 0] = 1.0f;
+        dst[i + 1] = 1.0f;
+        dst[i + 2] = 1.0f;
+        dst[i + 3] = scratch[sIdx];
+    }
+}
+
+
+void generateBitmask2(float* dst, ImageData* data, Island* islands, int startIdx, int endIdx) {
+
+    float fwidth = (float)data->width;
+    float fheight = (float)data->height;
+
+    //#pragma omp parallel for
+    for( int i=startIdx; i<endIdx; i++ ) {
+        Island island = islands[i];
+        int num = island.numTriangles * 6;
+        float vals[4] = {1,1,1,1};
+        for(int k = 0;k<num;k+=6) {
+            int x0 = abs((int)round(island.triangles[k] * fwidth));
+            int y0 = abs((int)round(island.triangles[k + 1] * fheight));
+            int x1 = abs((int)round(island.triangles[k + 2] * fwidth));
+            int y1 = abs((int)round(island.triangles[k + 3] * fheight));
+            int x2 = abs((int)round(island.triangles[k + 4] * fwidth));
+            int y2 = abs((int)round(island.triangles[k + 5] * fheight));
+            drawTriangle( (void*)dst, x0, y0, x1, y1, x2, y2, data->width, data->height, vals, &writeFourFloat );
+        }
+    }
+}
+
+void generateEdgeHighlights( float* lineData, float* tuvData, int numEntries, int width, int height, float* dst ) {
+
+    int threads = omp_get_max_threads();
+
+    IslandLines* lines = convertLineData(lineData, numEntries);
+    Island* islands = convertIslandData(tuvData, numEntries);
+    ImageData* imageData = createImageData(width, height);
+    ThreadData* threadData = createThreadData(threads, imageData);
+    BitmaskData* bitmaskData = createBitmaskData(width, height);
+
+    for(int i =0;i<numEntries;i+=64) {
+        int i2 = __min(i + 64, numEntries);
+        generateBitmask(bitmaskData, imageData, islands, i, i2);
+
+        #pragma omp parallel for
+        for( int k = i;k < i2;k++ ) {
+            ThreadData* d = threadData + omp_get_thread_num();
+            drawLineSegments(dst, bitmaskData, lines + k, imageData, d);
+        }
+
+    }
+
+    copyTempToDst(imageData, dst);
+    freeStructData(bitmaskData, lines, islands, threadData, threads, imageData);
+}
+
+// void generateEdgeHighlights( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int thickness, float blur, float* dst ) {
+
+//     float fwidth =  (float) width;
+//     float fheight = (float) height;
+
+//     char* areaMask;
+
+//     // generate a mask of the inside of the UVs
+//     if(thickness <= 1) {
+//         const float subtract = 0.5; 
+//         #pragma omp parallel for
+//         for( int i=0; i<tuvLen; i+=6 ) {
+//             int x0 = abs((int)round(tuvData[i] * fwidth - subtract));
+//             int y0 = abs((int)round(tuvData[i + 1] * fheight - subtract));
+//             int x1 = abs((int)round(tuvData[i + 2] * fwidth - subtract));
+//             int y1 = abs((int)round(tuvData[i + 3] * fheight - subtract));
+//             int x2 = abs((int)round(tuvData[i + 4] * fwidth - subtract));
+//             int y2 = abs((int)round(tuvData[i + 5] * fheight - subtract));
+//             drawTriangle( dst, x0, y0, x1, y1, x2, y2, width, 1.0f);
+//         }
+
+//         #pragma omp parallel for
+//         for( int i=0; i<uvLen; i+=4 ) {
+//             int x0 = abs((int)round(uvData[i] * fwidth - subtract));
+//             int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
+//             int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
+//             int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
+//             drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
+//         }
+
+//         // now copy the mask and selectively erode to fix inaccuracies
+//         areaMask = (char*)calloc(width*height,sizeof(char));
+//         #pragma omp parallel for collapse(2)
+//         for ( int x=0;x<width;x++) {
+//             for ( int y=0;y<height;y++) {
+//                 if(pixelSet(dst,x,y,width,height)) {
+//                     int j;
+//                     const int offsetX[4] = {0,-1,1,0};
+//                     const int offsetY[4] = {-1,0,0,1};
+//                     for(j=0;j<4;j++) {
+//                         if(!pixelSet( dst, x+offsetX[j], y+offsetY[j], width, height )) {
+//                             break;
+//                         }
+//                     }
+//                     if( j == 4 ) {
+//                         areaMask[y*width+x] = 1;
+//                     }
+//                 }
+//             }
+//         }
+
+//         // reset dst
+//         memset(dst,0,width * height * 4 * sizeof(float));
+//     }
+
+//     // draw the actual lines to the array
+//     #pragma omp parallel for
+//     for( int i=0; i<uvLen; i+=4 ) {
+//         const float subtract = 0.5; 
+//         int x0 = abs((int)round(uvData[i] * fwidth - subtract));
+//         int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
+//         int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
+//         int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
+//         drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
+//     }
+
+//     // basically just dilate over and over
+//     if(thickness > 1) {
+//         char* mask1 = (char*)calloc( width * height, sizeof(char) );
+//         #pragma omp parallel for collapse(2)
+//         for ( int x=0; x<width; x++) {
+//             for ( int y=0; y<height; y++) {
+//                 if(pixelSet( dst, x, y, width, height )) {
+//                     mask1[y * width + x] = 1;
+//                 }
+//             }
+//         }
+//         char* mask2 = (char*)calloc( width * height, sizeof(char) );
+
+//         for (int i = 1;i<thickness; i++) {
+//             #pragma omp parallel for collapse(2)
+//             for ( int x=0; x<width; x++) {
+//                 for ( int y=0; y<height; y++) {
+//                     for(int j=0;j<9;j++) {
+//                         int ox = x+j % 3 - 1;
+//                         int oy = y+j / 3 - 1;
+//                         if(pixelSetMask( mask1, ox, oy, width, height )) {
+//                             mask2[y * width + x] = 1;
+//                             break;
+//                         }
+//                     }
+//                 }
+//             }
+//             char* t = mask1;
+//             mask1 = mask2;
+//             mask2 = t;
+//         }
+
+//         #pragma omp parallel for collapse(2)
+//         for ( int x=0;x<width;x++) {
+//             for ( int y=0;y<height;y++) {
+//                 if(pixelSetMask( mask1, x, y, width, height )) {
+//                     setPixel( dst, x, y, width, 1.0, 1.0, 1.0, 1.0 );
+//                 }
+//             }
+//         }
+//         free(mask1);
+//         free(mask2);
+//     } else {
+//         // selectively dilate outwards to fix errors with diagonal lines
+//         char* tMask = (char*)calloc( width * height, sizeof(char) );
+
+//         #pragma omp parallel for collapse(2)
+//         for ( int x=0; x<width; x++) {
+//             for ( int y=0; y<height; y++) {
+//                 if (pixelSetMask( areaMask, x, y, width, height )) {
+//                     continue;
+//                 }
+
+//                 for(int j=0;j<9;j++) {
+//                     int ox = x+j % 3 - 1;
+//                     int oy = y+j / 3 - 1;
+//                     if(pixelSet( dst, ox, oy, width, height )) {
+//                         tMask[y * width + x] = 1;
+//                         break;
+//                     }
+//                 }
+//             }
+//         }
+
+//         #pragma omp parallel for collapse(2)
+//         for ( int x=0;x<width;x++) {
+//             for ( int y=0;y<height;y++) {
+//                 if(pixelSetMask( tMask, x, y, width, height )) {
+//                     setPixel( dst, x, y, width, 1.0, 1.0, 1.0, 1.0 );
+//                 }
+//             }
+//         }
+
+//         free(areaMask);
+//         free(tMask);
+//     }
+
+//     if (blur != 0.0) {
+//         // finally, blur the result
+//         int kw = (int)(blur + 2) * 2 + 1;
+//         int kc = kw / 2; // center of the kernel
+//         float* kernel = buildKernel(kw, blur);
+
+//         float* temp = (float*)malloc(width*height*sizeof(float));
+
+//         // y direction
+//         #pragma omp parallel for collapse(2)
+//         for(int y=0; y<height; y++) {
+//             for(int x=0; x<width ;x++) {
+//                 float sum = 0;
+//                 for(int i = -kc;i<=kc;i++) {
+//                     int y1 = reflect(height,y-i);
+//                     sum+=kernel[i+kc] * pixelSet(dst,x,y1,width, height);
+//                 }
+//                 temp[y*width+x] = sum;
+//             }
+//         }
+
+//         // x direction
+//         #pragma omp parallel for collapse(2)
+//         for(int y=0; y<height; y++) {
+//             for(int x=0; x<width; x++) {
+//                 float sum = 0;
+//                 for(int i = -kc;i<=kc;i++) {
+//                     int x1 = reflect(width,x-i);
+//                     sum+=kernel[i+kc] * temp[y*width+x1];
+//                 }
+//                 setPixel( dst, x, y, width, 1.0, 1.0, 1.0, sum);
+//             }
+//         }
+//         free(temp);
+//         free(kernel);
+//     }
+// }
 
 // tuv data is triangulated UVs which act as a mask to determine which pixels can be written to
 // uvData is the lines that represent all lines to draw distance field from
-void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int target, float* dst, float* retVal ) {
+// void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int target, float* dst, float* retVal ) {
 
-    if(uvLen == 0 || tuvLen == 0 || width == 0 || height == 0) {
-        return;
-    }
+//     if(uvLen == 0 || tuvLen == 0 || width == 0 || height == 0) {
+//         return;
+//     }
 
-    // first, draw a mask for what pixels may be written to
-    float fwidth =  (float) width;
-    float fheight = (float) height;
+//     // first, draw a mask for what pixels may be written to
+//     float fwidth =  (float) width;
+//     float fheight = (float) height;
 
-    #pragma omp parallel for
-    for( int i=0; i<tuvLen; i+=6 ) {
-        const float subtract = 0.5;
-        int x0 = abs((int)round(tuvData[i] * fwidth - subtract));
-        int y0 = abs((int)round(tuvData[i + 1] * fheight - subtract));
-        int x1 = abs((int)round(tuvData[i + 2] * fwidth - subtract));
-        int y1 = abs((int)round(tuvData[i + 3] * fheight - subtract));
-        int x2 = abs((int)round(tuvData[i + 4] * fwidth - subtract));
-        int y2 = abs((int)round(tuvData[i + 5] * fheight - subtract));
-        drawTriangle( dst, x0, y0, x1, y1, x2, y2, width, 1.0f);
-    }
+//     #pragma omp parallel for
+//     for( int i=0; i<tuvLen; i+=6 ) {
+//         const float subtract = 0.5;
+//         int x0 = abs((int)round(tuvData[i] * fwidth - subtract));
+//         int y0 = abs((int)round(tuvData[i + 1] * fheight - subtract));
+//         int x1 = abs((int)round(tuvData[i + 2] * fwidth - subtract));
+//         int y1 = abs((int)round(tuvData[i + 3] * fheight - subtract));
+//         int x2 = abs((int)round(tuvData[i + 4] * fwidth - subtract));
+//         int y2 = abs((int)round(tuvData[i + 5] * fheight - subtract));
+//         drawTriangle( dst, x0, y0, x1, y1, x2, y2, width, 1.0f);
+//     }
 
-    // now copy the mask
-    char* mask = (char*)calloc(width*height,sizeof(char));
-    #pragma omp parallel for collapse(2)
-    for ( int x=0;x<width;x++) {
-        for ( int y=0;y<height;y++) {
-            if(pixelSet(dst,x,y,width,height)) {
-                mask[y*width+x] = 1;
-            }
-        }
-    }
+//     // now copy the mask
+//     char* mask = (char*)calloc(width*height,sizeof(char));
+//     #pragma omp parallel for collapse(2)
+//     for ( int x=0;x<width;x++) {
+//         for ( int y=0;y<height;y++) {
+//             if(pixelSet(dst,x,y,width,height)) {
+//                 mask[y*width+x] = 1;
+//             }
+//         }
+//     }
 
-    char* seenPixels = (char*)calloc(width * height,sizeof(char));
-    int distSum = 0;
-    int distPixels = 0;
-    short* mapping =  (short*)calloc(width * height, sizeof(short));
-    // allocate enough space for each buffer to hold the entire image
-    // each list holds several x,y pairs that represent pixels to be checked next
-    short* openList =   (short*)malloc(width * height * 2 * sizeof(short));
-    short* swapList =   (short*)malloc(width * height * 2 * sizeof(short));
-    int openLen, swapLen;
+//     char* seenPixels = (char*)calloc(width * height,sizeof(char));
+//     int distSum = 0;
+//     int distPixels = 0;
+//     short* mapping =  (short*)calloc(width * height, sizeof(short));
+//     // allocate enough space for each buffer to hold the entire image
+//     // each list holds several x,y pairs that represent pixels to be checked next
+//     short* openList =   (short*)malloc(width * height * 2 * sizeof(short));
+//     short* swapList =   (short*)malloc(width * height * 2 * sizeof(short));
+//     int openLen, swapLen;
 
-    // reset dst -- too lazy to write a function to draw lines to a mask
-    memset(dst,0,width * height * 4 * sizeof(float));
+//     // reset dst -- too lazy to write a function to draw lines to a mask
+//     memset(dst, 0, width * height * 4 * sizeof(float));
 
-    // draw all UV lines
-    #pragma omp parallel for
-    for( int i=0; i<uvLen; i+=4 ) {
-        const float subtract = 0.5;
-        int x0 = abs((int)round(uvData[i] * fwidth - subtract));
-        int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
-        int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
-        int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
-        drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
-    }
+//     // draw all UV lines
+//     #pragma omp parallel for
+//     for( int i=0; i<uvLen; i+=4 ) {
+//         const float subtract = 0.5;
+//         int x0 = abs((int)round(uvData[i] * fwidth - subtract));
+//         int y0 = abs((int)round(uvData[i + 1] * fheight - subtract));
+//         int x1 = abs((int)round(uvData[i + 2] * fwidth - subtract));
+//         int y1 = abs((int)round(uvData[i + 3] * fheight - subtract));
+//         drawLine( dst, x0, y0, x1, y1, width, 1, 1, 1, 1 );
+//     }
 
-    // fill our openList
-    openLen = 0;
-    for ( int x=0;x<width;x++) {
-        for ( int y=0;y<height;y++) {
-            if(pixelSet(dst,x,y,width,height)) {
-                // mark pixels as seen
-                seenPixels[y * width + x] = 1;
+//     // fill our openList
+//     openLen = 0;
+//     for ( int x=0;x<width;x++) {
+//         for ( int y=0;y<height;y++) {
+//             if(pixelSet(dst,x,y,width,height)) {
+//                 // mark pixels as seen
+//                 seenPixels[y * width + x] = 1;
+//                 mapping[y * width + x] = 0;
 
-                // write to openList
-                openList[openLen] = x;
-                openList[openLen + 1] = y;
-                openLen += 2;
-            }
-        }
-    }
+//                 // write to openList
+//                 openList[openLen] = x;
+//                 openList[openLen + 1] = y;
+//                 openLen += 2;
+//             }
+//         }
+//     }
 
-    int currentValue = 0;
-    while(openLen != 0) {
-        swapLen = 0;
-        currentValue++;
+//     int currentValue = 0;
+//     while(openLen != 0) {
+//         swapLen = 0;
+//         currentValue++;
 
-        // multiplied by 2 but doesn't matter
-        distSum += currentValue * openLen;
-        distPixels += openLen;
+//         // multiplied by 2 but doesn't matter
+//         distSum += currentValue * openLen;
+//         distPixels += openLen;
 
-        for( int k=0; k<openLen; k+=2 ) {
-            short xx = openList[k];
-            short yy = openList[k + 1];
-            for(int j=0;j<9;j++) {
-                int ox = xx+j % 3 - 1;
-                int oy = yy+j / 3 - 1;
+//         for( int k=0; k<openLen; k+=2 ) {
+//             short xx = openList[k];
+//             short yy = openList[k + 1];
+//             for(int j=0;j<9;j++) {
+//                 int ox = xx+j % 3 - 1;
+//                 int oy = yy+j / 3 - 1;
 
-                if(pixelSetMaskBoundary( seenPixels, ox, oy, width, height ) || !mask[oy * width + ox]) { // already processed or queued for processing
-                    continue;
-                }
+//                 if(pixelSetMaskBoundary( seenPixels, ox, oy, width, height ) || !mask[oy * width + ox]) { // already processed or queued for processing
+//                     continue;
+//                 }
 
 
-                mapping[oy * width + ox] = currentValue;
-                seenPixels[oy * width + ox] = 1;
+//                 mapping[oy * width + ox] = currentValue;
+//                 seenPixels[oy * width + ox] = 1;
 
-                swapList[swapLen] = ox;
-                swapList[swapLen + 1] = oy;
-                swapLen += 2;
-            }
-        }
-        // swap our lists
-        short* t = openList;
-        openList = swapList;
-        swapList = t;
-        openLen = swapLen;
-    }
+//                 swapList[swapLen] = ox;
+//                 swapList[swapLen + 1] = oy;
+//                 swapLen += 2;
+//             }
+//         }
+//         // swap our lists
+//         short* t = openList;
+//         openList = swapList;
+//         swapList = t;
+//         openLen = swapLen;
+//     }
 
-    float pixelDiff = (float)(255 - target) / 255.0 / (float) currentValue;
-    // map each pixel to it's corresponding value
-    #pragma omp parallel for collapse(2)
-    for(int y=0; y<height; y++) {
-        for(int x=0; x<width; x++) {
-            float val = 1.0 - pixelDiff * (float)mapping[y * width + x];
-            setPixel( dst, x, y, width, val, val, val, 1.0);
-        }
-    }
+//     float pixelDiff = (float)(255 - target) / 255.0 / (float) currentValue;
+//     // map each pixel to it's corresponding value
+//     #pragma omp parallel for collapse(2)
+//     for(int y=0; y<height; y++) {
+//         for(int x=0; x<width; x++) {
+//             float val = 1.0 - pixelDiff * (float)mapping[y * width + x];
+//             setPixel( dst, x, y, width, val, val, val, 1.0);
+//         }
+//     }
 
-    free(openList);
-    free(swapList);
-    free(seenPixels);
-    free(mapping);
-    free(mask);
+//     free(openList);
+//     free(swapList);
+//     free(seenPixels);
+//     free(mapping);
+//     free(mask);
 
-    *retVal = (float) distSum / (float) distPixels * 4;
-}
+//     *retVal = (float) distSum / (float) distPixels * 4;
+// }

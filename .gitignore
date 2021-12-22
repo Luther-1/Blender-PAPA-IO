@@ -5,3 +5,5 @@
 *.dll
 *.so
 *.dylib
+*.exe
+main.c
