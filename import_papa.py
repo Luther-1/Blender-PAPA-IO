@@ -983,7 +983,7 @@ def load(operator, context, templateProperties, filepaths):
     t = time.time() - t
     
     if len(filepaths) > 1:
-        operator.report({"INFO"},"Done in " + str(int(t*1000)) + "ms ("+str(templateProperties.getNumFiles()) + " files)")
+        operator.report({"INFO"},"Done in " + str(int(t*1000)) + "ms ("+str(len(filepaths)) + " files)")
     else:
         operator.report({"INFO"},"Done in " + str(int(t*1000)) + "ms")
 
