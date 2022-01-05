@@ -318,7 +318,7 @@ def load_papa(properties, context):
         else:
             animTargetArmature = findFirstValidArmature(animation, properties)
             if(not animTargetArmature):
-                return 'ERROR','Failed to find valid armature for animation'
+                return "ERROR","Failed to find valid armature for animation " + properties.getFilename()
             else:
                 print("Found target armature: "+animTargetArmature.name)
 
@@ -957,14 +957,34 @@ def createImageFromData(imageName, pixels, width, height, srgb, filepath, texMap
         texMap[imageName] = img # workaround for name clashes and 63 character name limit
     return img
 
-def load(operator,context,properties):
+def load(operator, context, templateProperties, filepaths):
+    results = [set(),""]
+
     t = time.time()
-    result = load_papa(properties,context)
-    t = time.time() - t
-    print("Done in "+str(int(t*1000)) + "ms")
-    if result:
-        operator.report({result[0]}, result[1])
+    for x in range(len(filepaths)):
+        t2 = time.time()
+
+        properties = templateProperties.withFile(filepaths[x])
+
+        result = load_papa(properties, context)
+
+        if result:
+            results[0].add(result[0])
+            results[1] += result[1] + "\n"
+            
+        print("Finished importing " + str(properties.getFilename()) + " in "+str(int((time.time() - t2)*1000)) + "ms")
+
+    print("Done in "+str(int((time.time() - t)*1000)) + "ms")
+
+    if len(results[0]):
+        operator.report(results[0], results[1])
         return {'CANCELLED'}
-    operator.report({"INFO"},"Done in "+str(int(t*1000)) + "ms")
+
+    t = time.time() - t
+    
+    if len(filepaths) > 1:
+        operator.report({"INFO"},"Done in " + str(int(t*1000)) + "ms ("+str(templateProperties.getNumFiles()) + " files)")
+    else:
+        operator.report({"INFO"},"Done in " + str(int(t*1000)) + "ms")
 
     return {'FINISHED'}

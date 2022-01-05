@@ -24,8 +24,8 @@
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (1, 1, 0),
-    "blender": (2, 90, 0),
+    "version": (1, 1, 2),
+    "blender": (3, 0, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
     "warning": "",
@@ -42,15 +42,16 @@ if "bpy" in locals():
     if("papafile" in locals()):
         imp.reload(papafile)
 import bpy
+from copy import copy
 from bpy.props import *
-from bpy.types import AddonPreferences, PropertyGroup
+from bpy.types import AddonPreferences, OperatorFileListElement, PropertyGroup
 import os
 
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 class PapaImportProperties:
-    def __init__(self, filepath: str, fuzzyMatch: bool, importTextures: bool, convertToQuads: bool, removeDoubles: bool, importNormals: bool, colours: bool,):
-        self.__filepath = filepath
+    def __init__(self, fuzzyMatch: bool, importTextures: bool, convertToQuads: bool, removeDoubles: bool, importNormals: bool, colours: bool,):
+        self.__filepath = None
         self.__fuzzyMatch = fuzzyMatch
         self.__importTextures = importTextures
         self.__convertToQuads = convertToQuads
@@ -59,6 +60,10 @@ class PapaImportProperties:
         self.__colours = colours
     def getFilepath(self):
         return self.__filepath
+    def getFilename(self):
+        return os.path.basename(os.path.realpath(self.getFilepath()))
+    def nextFile(self):
+        self.__filepathIndex += 1
     def isFuzzyMatch(self):
         return self.__fuzzyMatch
     def isImportTextures(self):
@@ -73,6 +78,10 @@ class PapaImportProperties:
         return self.__colours[0]
     def getSecondaryColour(self):
         return self.__colours[1]
+    def withFile(self, filepath):
+        prop = copy(self)
+        prop.__filepath = filepath
+        return prop
 
 class ImportPapa(bpy.types.Operator, ImportHelper):
     """Import from PAPA file format (.papa)"""
@@ -83,10 +92,13 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
     filename_ext = ".papa"
     filter_glob: StringProperty(default="*.papa", options={'HIDDEN'})
 
-    filepath: bpy.props.StringProperty(
-        name="File Path", 
-        description="File path used for importing the PAPA file", 
-        maxlen= 1024, default= "")
+    files: CollectionProperty(name="PAPA import files", type=OperatorFileListElement)
+    directory: StringProperty(subtype="DIR_PATH")
+
+    # filepath: bpy.props.StringProperty(
+    #     name="File Path", 
+    #     description="File path used for importing the PAPA file", 
+    #     maxlen= 1024, default= "")
        
     fuzzyMatch : BoolProperty(name="Fuzzy Match Animation Targets",description="Don't require all bones to match to import an animation.", default=True)
     importTextures : BoolProperty(name="Auto Import Texture Files",description="Automatically import the "
@@ -101,10 +113,14 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
         pref = context.preferences.addons[__name__].preferences
 
         colours = self.__getColours(pref)
-        
-        prop = PapaImportProperties(self.properties.filepath, self.properties.fuzzyMatch, self.properties.importTextures,
+
+        files = []
+        for file in self.properties.files:
+            files.append(os.path.join(self.properties.directory, file.name))
+
+        prop = PapaImportProperties(self.properties.fuzzyMatch, self.properties.importTextures,
             self.properties.convertToQuads, self.properties.removeDoubles, self.properties.importNormals,colours)
-        return import_papa.load(self, context, prop)
+        return import_papa.load(self, context, prop, files)
 
     def __getColours(self, pref):
 
