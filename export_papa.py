@@ -677,7 +677,7 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
     armature = None
 
     for modifier in mesh.modifiers:
-        if modifier.type == "ARMATURE":
+        if modifier.type == "ARMATURE" and modifier.object:
             armature = modifier.object
             break
     if armature == None:

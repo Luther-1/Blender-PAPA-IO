@@ -577,6 +577,7 @@ class ExportPapaMenu(bpy.types.Menu):
             row.enabled = False
             return
 
+        # add exportables
         for obj in exportables:
             row = l.row()
             icon = "none"
@@ -585,7 +586,7 @@ class ExportPapaMenu(bpy.types.Menu):
                 icon = "GROUP"
                 name = "Model"
                 for modifier in obj.modifiers:
-                    if modifier.type == "ARMATURE":
+                    if modifier.type == "ARMATURE" and modifier.object:
                         name = "Model + Armature"
                         break
             if(obj.type == "ARMATURE"):
@@ -603,7 +604,7 @@ class ExportPapaMenu(bpy.types.Menu):
             if(obj.type == "MESH"):
                 hasModel = True
                 for modifier in obj.modifiers:
-                    if modifier.type == "ARMATURE":
+                    if modifier.type == "ARMATURE" and modifier.object:
                         hasArmature = True
             
             if(obj.type == "ARMATURE"): # invalid unless it has animation data
