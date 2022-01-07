@@ -19,6 +19,7 @@ from math import pi, radians, log2
 from array import array
 from os import path
 import ctypes
+from enum import Enum
 
 TEX_SIZE_INT = "__PAPA_IO_TEXTURE_SIZE"
 OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
@@ -36,6 +37,14 @@ EDGE_HIGHLIGHT_MULTIPLIER_B = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER_B"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
+
+class OBJ_TYPES:
+    DIFFUSE = "DIFFUSE"
+    MATERIAL = "MATERIAL"
+    MASK = "MASK"
+    AO = "AO"
+    EDGE_HIGHLIGHT = "EDGE_HIGHLIGHT"
+    DISTANCE_FIELD = "DISTANCE_FIELD"
 
 def selectObject(obj):
     for i in bpy.context.selected_objects: 
@@ -285,10 +294,10 @@ def getOrCreateImage(imageName, size=-1):
         img.pack() # by packing the data, we can edit the colour space name
         return img
 
-class SetupDiffuse(bpy.types.Operator):
+class SetupTextureInitial(bpy.types.Operator):
     """Copies a mesh and creates only the diffuse details of it"""
     bl_idname = "setup_diffuse.legion_utils"
-    bl_label = "Legion Setup Diffuse"
+    bl_label = "Legion Setup Texture Initial"
     bl_options = {'UNDO'}
 
     size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
@@ -328,7 +337,7 @@ class SetupDiffuse(bpy.types.Operator):
         diffuse.data.materials.clear()
         diffuse.location[0]+=diffuse.dimensions.x * 2
         diffuse[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
-        diffuse[OBJ_TYPE_STRING] = "DIFFUSE"
+        diffuse[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
         diffuse[TEX_NAME_STRING] = texname
         diffuse[TEX_SHOULD_BAKE] = True
         diffuse[TEX_SHOULD_SUPERSAMPLE] = True
@@ -363,37 +372,21 @@ class SetupDiffuse(bpy.types.Operator):
 
         bpy.context.scene.render.engine = 'CYCLES'
 
-        
 
-class SetupBake(bpy.types.Operator):
-    """Copies a mesh and creates all the bake details of it"""
+class SetupTextureComplete(bpy.types.Operator):
+    """Copies a mesh and creates several new objects for baking"""
     bl_idname = "setup_bake.legion_utils"
-    bl_label = "Legion Setup Bake"
+    bl_label = "Legion Setup Texture Complete"
     bl_options = {'UNDO'}
-    
-    def execute(self, context):
-        diffuse = None
+
+    def findDiffuse(self, context):
         for obj in bpy.context.selected_objects:
-            if getObjectType(obj) == "DIFFUSE":
-                diffuse = obj
-                break
-
-        if not diffuse:
-            self.report({'ERROR'},"Diffuse object not given")
-
-        try:
-            size = diffuse[TEX_SIZE_INT]
-            name = diffuse[OBJ_NAME_STRING]
-        except:
-            self.report({'ERROR'},"Selected object must have been previously created by \"setup diffuse\"")
-            return {'CANCELLED'}
-
-        self.setupObject(diffuse, size, name)
-
-        return {'FINISHED'}
+            if getObjectType(obj) == OBJ_TYPES.DIFFUSE:
+                self.__builtObjects.append(obj)
+                return True
     
-    def invoke(self, context, event):
-        return self.execute(context)
+        self.report({'ERROR'},"Selected object must have been previously set up using Setup Texture Initial")
+        return False
 
     def getMaterialMap(self, mesh):
         polygons = mesh.data.polygons
@@ -455,7 +448,7 @@ class SetupBake(bpy.types.Operator):
         for faceIdx in materialMap["glow"]:
             polygons[faceIdx].material_index = glowIdx
 
-    def setupObject(self, obj, texSize, name):
+    def setupObjectBake(self, obj, texSize, name):
         materialMap = self.getMaterialMap(obj)
 
         # create the material object
@@ -465,11 +458,12 @@ class SetupBake(bpy.types.Operator):
         material.data.materials.clear()
         material.location[0]+=material.dimensions.x * 2
         material[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
-        material[OBJ_TYPE_STRING] = "MATERIAL"
+        material[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
         material[TEX_NAME_STRING] = texname
         material[TEX_SHOULD_BAKE] = True
         material[TEX_SHOULD_SUPERSAMPLE] = True
         material[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
+        self.__builtObjects.append(material)
         bpy.context.collection.objects.link(material)
 
         matData = material.data.materials
@@ -494,11 +488,12 @@ class SetupBake(bpy.types.Operator):
         mask.data.materials.clear()
         mask.location[0]+=mask.dimensions.x * 4
         mask[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
-        mask[OBJ_TYPE_STRING] = "MASK"
+        mask[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
         mask[TEX_NAME_STRING] = texname
         mask[TEX_SHOULD_BAKE] = True
         mask[TEX_SHOULD_SUPERSAMPLE] = True
         mask[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
+        self.__builtObjects.append(mask)
         bpy.context.collection.objects.link(mask)
 
         matData = mask.data.materials
@@ -526,11 +521,12 @@ class SetupBake(bpy.types.Operator):
         ao.data.materials.clear()
         ao.location[0]+=ao.dimensions.x * 6
         ao[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
-        ao[OBJ_TYPE_STRING] = "AO"
+        ao[OBJ_TYPE_STRING] = OBJ_TYPES.AO
         ao[TEX_NAME_STRING]=texname
         ao[TEX_SHOULD_BAKE] = True
         ao[TEX_SHOULD_SUPERSAMPLE] = True
         ao[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
+        self.__builtObjects.append(ao)
         if ao.dimensions.x < 10:
             ao.location[0]+= ao.dimensions.x
         bpy.context.collection.objects.link(ao)
@@ -541,38 +537,137 @@ class SetupBake(bpy.types.Operator):
 
         self.assignFacesAO(materialMap,ao,"ao_bake_ignore")
 
+    def setupBake(self, context):
+        diffuse = None
+        for obj in self.__builtObjects:
+            if getObjectType(obj) == OBJ_TYPES.DIFFUSE:
+                diffuse = obj
+                break
 
-class SetupMaterialbake(bpy.types.Operator):
-    """Creates a material bake for the material object which incorporates the edge highlights"""
-    bl_idname = "setup_materialbake.legion_utils"
-    bl_label = "Legion Setup Material Bake"
-    bl_options = {'UNDO'}
+        size = diffuse[TEX_SIZE_INT]
+        name = diffuse[OBJ_NAME_STRING]
+
+        self.setupObjectBake(diffuse, size, name)
+
+        return True
+
+    # ------------------------------------------
+
+    def setupObjectEdgeHighlights(self, diffuse, ao, name, texSize):
+        target = None
+        
+        edgeHighlightTex = getOrCreateImage(name+"_edge_highlights",texSize)
+        target = ao
+        edgeHighlight = duplicateObject(target,"edge highlights")
+        edgeHighlight.data.materials.clear()
+        if ao:
+            edgeHighlight.location[0]+=edgeHighlight.dimensions.x * 2
+            if ao.dimensions.x < 10:
+                edgeHighlight.location[0]+= ao.dimensions.x
+        else:
+            edgeHighlight.location[1]+=edgeHighlight.dimensions.y * 2
+        bpy.context.collection.objects.link(edgeHighlight)
+
+        edgeHighlight[OBJ_NAME_STRING] = diffuse[OBJ_NAME_STRING]
+        edgeHighlight[OBJ_TYPE_STRING] = OBJ_TYPES.EDGE_HIGHLIGHT
+        edgeHighlight[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
+        edgeHighlight[TEX_NAME_STRING] = edgeHighlightTex.name
+        edgeHighlight[TEX_SHOULD_BAKE] = False
+        edgeHighlight[TEX_SHOULD_SUPERSAMPLE] = False
+        edgeHighlight[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
+        self.__builtObjects.append(edgeHighlight)
+        matData = edgeHighlight.data.materials
+        matData.append(createEdgeHightlightMaterial("edge highlights", diffuse, ao, edgeHighlightTex))
+
+    def setupEdgeHighlights(self, context):
+        obj = self.__builtObjects[0]
+
+        diffuseObj = None
+        aoObj = None
     
-    def execute(self, context):
-        obj = bpy.context.active_object
-        if not obj:
-            self.report({'ERROR'},"No Object given")
-
-        material = None
-        edgeHighlights = None
-
-        for obj in bpy.context.selected_objects:
+        name = obj[OBJ_NAME_STRING]
+        size = obj[TEX_SIZE_INT]
+        for obj in self.__builtObjects:
             t = getObjectType(obj)
-            if t == "MATERIAL":
-                material = obj
-            if t == "EDGE_HIGHLIGHT":
-                edgeHighlights = obj
+            if t == OBJ_TYPES.DIFFUSE:
+                diffuseObj = obj
+            if t == OBJ_TYPES.AO:
+                aoObj = obj
 
-        if not material or not edgeHighlights:
-            self.report({'ERROR'},"Selected objects should contain the material object and edge highlight object")
-            return {'CANCELLED'}
+        self.setupObjectEdgeHighlights(diffuseObj, aoObj, name, size)
 
+        return True
 
-        self.setupObject(material, edgeHighlights)
+    # ------------------------------------------
 
-        return {'FINISHED'}
+    def setupObjectDistanceField(self, locObj, diffuse, ao, edgeObj, name, texSize):
+
+        target = None
+        
+        distanceFieldTex = getOrCreateImage(name+"_distance_field",texSize)
+        target = edgeObj
+        if not target:
+            target = ao
+        if not target:
+            target = diffuse
+        if not target:
+            target = bpy.context.active_object
+        distanceField = duplicateObject(target,"distance field")
+        distanceField.data.materials.clear()
+        if edgeObj and edgeObj.location[0]>=locObj.location[0]:
+            distanceField.location[0]+=distanceField.dimensions.x * 2
+            if ao.dimensions.x < 10:
+                distanceField.location[0]+= ao.dimensions.x
+        else:
+            distanceField.location[0]=locObj.location[0] + locObj.dimensions.x * 2
+            distanceField.location[1]=locObj.location[1]
+            distanceField.location[2]=locObj.location[2]
+        bpy.context.collection.objects.link(distanceField)
+
+        distanceField[OBJ_NAME_STRING] = diffuse[OBJ_NAME_STRING]
+        distanceField[OBJ_TYPE_STRING] = OBJ_TYPES.DISTANCE_FIELD
+        distanceField[DISTANCE_FIELD_TEXTURE] = distanceFieldTex
+        distanceField[TEX_NAME_STRING] = distanceFieldTex.name
+        distanceField[TEX_SHOULD_BAKE] = False
+        distanceField[TEX_SHOULD_SUPERSAMPLE] = False
+        distanceField[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
+        self.__builtObjects.append(distanceField)
+        matData = distanceField.data.materials
+        df = createDistanceFieldMaterial("distance field", distanceFieldTex)
+        matData.append(df)
+        matData.append(createMaterial("distance field ignore",(0xff,0xff,0xff),distanceFieldTex))
+        distanceField[DISTANCE_FIELD_MATERIAL] = df
+
+    def setupDistanceField(self, context):
+        obj = self.__builtObjects[0]
+
+        locObj = None
+        diffuseObj = None
+        aoObj = None
+        edgeObj = None
+        maxLocation = -999999
     
-    def setupObject(self, materialObj, edgeHighlight):
+        name = obj[OBJ_NAME_STRING]
+        size = obj[TEX_SIZE_INT]
+        for obj in self.__builtObjects:
+            t = getObjectType(obj)
+            if t == OBJ_TYPES.DIFFUSE:
+                diffuseObj = obj
+            if t == OBJ_TYPES.AO:
+                aoObj = obj
+            if t == OBJ_TYPES.EDGE_HIGHLIGHT:
+                edgeObj = obj
+            if(obj.location[0] > maxLocation):
+                locObj = obj
+                maxLocation = obj.location[0]
+
+        self.setupObjectDistanceField(locObj, diffuseObj, aoObj, edgeObj, name, size)
+
+        return True
+
+    # ------------------------------------------
+
+    def setupObjectMaterialBake(self, materialObj, edgeHighlight):
         darkMat = None
         lightMat = None
         for slot in materialObj.material_slots:
@@ -586,7 +681,7 @@ class SetupMaterialbake(bpy.types.Operator):
             
         if not darkMat or not lightMat:
             self.report({"ERROR"},"Material object missing dark or light material.")
-            return
+            return False
 
         lightCol = lightMat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value
         
@@ -613,7 +708,45 @@ class SetupMaterialbake(bpy.types.Operator):
         tree.links.new(colourRamp.inputs["Fac"], edgeBake.outputs["Color"])
         tree.links.new(bsdf.inputs["Base Color"], mixRGB.outputs["Color"])
 
-        self.report({"INFO"},"Material successfully updated")
+    def setupMaterialBake(self, context):
+        obj = self.__builtObjects[0]
+
+        material = None
+        edgeHighlights = None
+
+        for obj in self.__builtObjects:
+            t = getObjectType(obj)
+            if t == OBJ_TYPES.MATERIAL:
+                material = obj
+            if t == OBJ_TYPES.EDGE_HIGHLIGHT:
+                edgeHighlights = obj
+
+
+        self.setupObjectMaterialBake(material, edgeHighlights)
+
+        return True
+
+    def clearEdgeSharp(self, context):
+        for obj in self.__builtObjects:
+            t = getObjectType(obj)
+            if t == OBJ_TYPES.EDGE_HIGHLIGHT or t == OBJ_TYPES.DISTANCE_FIELD:
+                continue
+
+            for edge in obj.data.edges:
+                edge.use_edge_sharp = False
+
+
+    def execute(self, context):
+
+        methods = [self.setupBake, self.setupEdgeHighlights, self.setupDistanceField, self.setupMaterialBake, self.clearEdgeSharp]
+        self.__builtObjects = []
+
+        for method in methods:
+            retVal = method(context)
+            if not retVal:
+                return {'CANCELLED'}
+
+        return {'FINISHED'}
 
 class BakeSelectedObjects(bpy.types.Operator):
     """Bakes all selected objects' textures."""
@@ -649,7 +782,7 @@ class BakeSelectedObjects(bpy.types.Operator):
                 
                 selectObject(obj)
 
-                if getObjectType(obj) == "AO":
+                if getObjectType(obj) == OBJ_TYPES.AO:
                     bpy.ops.object.bake(type="AO",margin=128)
                     self.alterUvs(obj,0,1)
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
@@ -660,13 +793,13 @@ class BakeSelectedObjects(bpy.types.Operator):
                 if shouldSupersample:
                     tex.scale(texSize[0],texSize[1])
 
-                if getObjectType(obj) == "DIFFUSE": # add magic pixel TODO remove
+                if getObjectType(obj) == OBJ_TYPES.DIFFUSE: # add magic pixel TODO remove
                     idx = texSize[0] * texSize[1] * 4 - 4
                     tex.pixels[idx] = 1.0
                     tex.pixels[idx + 1] = 0.0
                     tex.pixels[idx + 2] = 1.0
                     tex.pixels[idx + 3] = 1.0
-                elif getObjectType(obj) == "AO":
+                elif getObjectType(obj) == OBJ_TYPES.AO:
                     idx = texSize[0] * texSize[1] * 4 - 4
                     tex.pixels[idx] = 1.0
                     tex.pixels[idx + 1] = 1.0
@@ -679,72 +812,6 @@ class BakeSelectedObjects(bpy.types.Operator):
 
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
         return {'FINISHED'}
-
-class SetupEdgeHighlights(bpy.types.Operator):
-    """Copies the object and sets it up for edge highlights."""
-    bl_idname = "setup_edges.legion_utils"
-    bl_label = "Legion Setup Edge Highlights"
-    bl_options = {'REGISTER','UNDO'}
-    
-    def execute(self, context):
-        obj = bpy.context.active_object
-        if not obj and len(bpy.context.selected_objects) != 0:
-            obj = bpy.context.selected_objects[0]
-        if not obj:
-            self.report({'ERROR'},"No Object given")
-            return {'CANCELLED'}
-
-        diffuseObj = None
-        aoObj = None
-    
-        try:
-            name = obj[OBJ_NAME_STRING]
-            size = obj[TEX_SIZE_INT]
-            for obj in bpy.context.selected_objects:
-                t = getObjectType(obj)
-                if t == "DIFFUSE":
-                    diffuseObj = obj
-                if t == "AO":
-                    aoObj = obj
-
-        except:
-            self.report({'ERROR'},"Selected object must have been previously created by \"setup diffuse\" or \"setup bake\"")
-            return {'CANCELLED'}
-
-        self.setupObject(diffuseObj, aoObj, name, size)
-
-        return {'FINISHED'}
-    
-
-    def setupObject(self, diffuse, ao, name, texSize):
-        target = None
-        
-        edgeHighlightTex = getOrCreateImage(name+"_edge_highlights",texSize)
-        target = ao
-        if not target:
-            target = diffuse
-        if not target:
-            target = bpy.context.active_object
-        edgeHighlight = duplicateObject(target,"edge highlights")
-        edgeHighlight.data.materials.clear()
-        if ao:
-            edgeHighlight.location[0]+=edgeHighlight.dimensions.x * 2
-            if ao.dimensions.x < 10:
-                edgeHighlight.location[0]+= ao.dimensions.x
-        else:
-            edgeHighlight.location[1]+=edgeHighlight.dimensions.y * 2
-        bpy.context.collection.objects.link(edgeHighlight)
-
-        edgeHighlight[OBJ_NAME_STRING] = diffuse[OBJ_NAME_STRING]
-        edgeHighlight[OBJ_TYPE_STRING] = "EDGE_HIGHLIGHT"
-        edgeHighlight[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
-        edgeHighlight[TEX_NAME_STRING] = edgeHighlightTex.name
-        edgeHighlight[TEX_SHOULD_BAKE] = False
-        edgeHighlight[TEX_SHOULD_SUPERSAMPLE] = False
-        edgeHighlight[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
-        matData = edgeHighlight.data.materials
-        matData.append(createEdgeHightlightMaterial("edge highlights", diffuse, ao, edgeHighlightTex))
-        
 
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
@@ -1086,86 +1153,6 @@ class TweakEdgeHighlights(bpy.types.Operator):
                                                 ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
 
         tex.pixels = outData
-
-class SetupDistanceField(bpy.types.Operator):
-    """Copies the object and sets it up for distance field."""
-    bl_idname = "setup_distance.legion_utils"
-    bl_label = "Legion Setup Distance Field"
-    bl_options = {'REGISTER','UNDO'}
-    
-    def execute(self, context):
-        obj = bpy.context.active_object
-        if not obj and len(bpy.context.selected_objects) != 0:
-            obj = bpy.context.selected_objects[0]
-        if not obj:
-            self.report({'ERROR'},"No Object given")
-            return {'CANCELLED'}
-
-        locObj = None
-        diffuseObj = None
-        aoObj = None
-        edgeObj = None
-        maxLocation = -999999
-    
-        try:
-            name = obj[OBJ_NAME_STRING]
-            size = obj[TEX_SIZE_INT]
-            for obj in bpy.context.selectable_objects:
-                t = getObjectType(obj)
-                if t == "DIFFUSE":
-                    diffuseObj = obj
-                if t == "AO":
-                    aoObj = obj
-                if t == "EDGE_HIGHLIGHT":
-                    edgeObj = obj
-                if(obj.location[0] > maxLocation):
-                    locObj = obj
-                    maxLocation = obj.location[0]
-        except:
-            self.report({'ERROR'},"Selected object must have been previously created by \"setup diffuse\" or \"setup bake\"")
-            return {'CANCELLED'}
-
-        self.setupObject(locObj, diffuseObj, aoObj, edgeObj, name, size)
-
-        return {'FINISHED'}
-    
-
-    def setupObject(self, locObj, diffuse, ao, edgeObj, name, texSize):
-
-        target = None
-        
-        distanceFieldTex = getOrCreateImage(name+"_distance_field",texSize)
-        target = edgeObj
-        if not target:
-            target = ao
-        if not target:
-            target = diffuse
-        if not target:
-            target = bpy.context.active_object
-        distanceField = duplicateObject(target,"distance field")
-        distanceField.data.materials.clear()
-        if edgeObj and edgeObj.location[0]>=locObj.location[0]:
-            distanceField.location[0]+=distanceField.dimensions.x * 2
-            if ao.dimensions.x < 10:
-                distanceField.location[0]+= ao.dimensions.x
-        else:
-            distanceField.location[0]=locObj.location[0] + locObj.dimensions.x * 2
-            distanceField.location[1]=locObj.location[1]
-            distanceField.location[2]=locObj.location[2]
-        bpy.context.collection.objects.link(distanceField)
-
-        distanceField[OBJ_NAME_STRING] = diffuse[OBJ_NAME_STRING]
-        distanceField[OBJ_TYPE_STRING] = "DISTANCE_FIELD"
-        distanceField[DISTANCE_FIELD_TEXTURE] = distanceFieldTex
-        distanceField[TEX_NAME_STRING] = distanceFieldTex.name
-        distanceField[TEX_SHOULD_BAKE] = False
-        distanceField[TEX_SHOULD_SUPERSAMPLE] = False
-        distanceField[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
-        matData = distanceField.data.materials
-        df = createDistanceFieldMaterial("distance field", distanceFieldTex)
-        matData.append(df)
-        matData.append(createMaterial("distance field ignore",(0xff,0xff,0xff),distanceFieldTex))
-        distanceField[DISTANCE_FIELD_MATERIAL] = df
 
 class TweakDistanceField(bpy.types.Operator):
     """Draws the distance field of the specified object"""
@@ -1557,7 +1544,7 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
-                    obj[OBJ_TYPE_STRING] = "DIFFUSE"
+                    obj[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
                     success+=1
                 matNames = [x.material.name if x.material else None for x in obj.material_slots]
                 matIdx = {}
@@ -1599,7 +1586,7 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
-                    obj[OBJ_TYPE_STRING] = "MATERIAL"
+                    obj[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
                     success+=1
             if obj.name=="mask":
                 if not TEX_SHOULD_BAKE in obj:
@@ -1609,7 +1596,7 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_SHOULD_SUPERSAMPLE]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
-                    obj[OBJ_TYPE_STRING] = "MASK"
+                    obj[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
                     success+=1
             if obj.name=="ao":
                 if not TEX_SHOULD_BAKE in obj:
@@ -1619,7 +1606,7 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
-                    obj[OBJ_TYPE_STRING] = "AO"
+                    obj[OBJ_TYPE_STRING] = OBJ_TYPES.AO
                     success+=1
             if obj.name=="distance field":
                 if not TEX_SHOULD_BAKE in obj:
@@ -1629,7 +1616,7 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
-                    obj[OBJ_TYPE_STRING] = "DISTANCE_FIELD"
+                    obj[OBJ_TYPE_STRING] = OBJ_TYPES.DISTANCE_FIELD
                     success+=1
                 if DISTANCE_FIELD_TEXTURE in obj and not obj[DISTANCE_FIELD_TEXTURE] and TEX_NAME_STRING in obj and TEX_SIZE_INT in obj:
                     texname = obj[TEX_NAME_STRING]
@@ -1644,7 +1631,7 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
-                    obj[OBJ_TYPE_STRING] = "EDGE_HIGHLIGHT"
+                    obj[OBJ_TYPE_STRING] = OBJ_TYPES.EDGE_HIGHLIGHT
                     success+=1
                 if EDGE_HIGHLIGHT_TEXTURE in obj and not obj[EDGE_HIGHLIGHT_TEXTURE] and TEX_NAME_STRING in obj and TEX_SIZE_INT in obj:
                     texname = obj[TEX_NAME_STRING]
@@ -1695,14 +1682,12 @@ if path.exists(libPath):
 
 
 _classes = (
-    SetupDiffuse,
-    SetupBake,
-    SetupMaterialbake,
+    SetupTextureInitial,
+    SetupTextureComplete,
+    DissolveTo,
     BakeSelectedObjects,
     CalulateEdgeSharp,
-    SetupEdgeHighlights,
     TweakEdgeHighlights,
-    SetupDistanceField,
     TweakDistanceField,
     PackUndersideFaces,
     UpdateLegacy,
