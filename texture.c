@@ -4,8 +4,8 @@
 #include<math.h>
 #include<string.h>
 
-#define OUTSIDE_IMAGE(x,y,w,h) x < 0 || x >= w || y < 0 || y >= h
-#define IMAGE_INDEX(x,y,w) (y * w + x)
+#define OUTSIDE_IMAGE(x,y,w,h) (x < 0 || x >= w || y < 0 || y >= h)
+#define IMAGE_INDEX(x,y,w) ((y) * (w) + x)
 #define CLAMP(val,min,max) ((val < min) ? (min) : ((val > max) ? (max) : (val)))
 
 typedef struct LineData {
@@ -187,12 +187,10 @@ void write3x3Plus(int x, int y, int w, int h, void* _data, void* _dst) {
     void (*writeFunc)(int, int, int, int, void*, void*) = data->writeFunc;
     void* argData = data->argData;
 
-    const int offsetX[4] = {0,-1,1,0};
-    const int offsetY[4] = {-1,0,0,1};
-
-    (*writeFunc)(x, y, w, h, argData, _dst);
+    const int offsetX[5] = {0,0,-1,1,0};
+    const int offsetY[5] = {0,-1,0,0,1};
     
-    for(int j=0;j<4;j++) {
+    for(int j=0;j<5;j++) {
         const int ox = x+offsetX[j];
         const int oy = y+offsetY[j];
 
@@ -220,6 +218,7 @@ void writeEdgeAware(int x, int y, int w, int h, void* _data, void* _dst) {
     EdgeAwareData* data = (EdgeAwareData*)_data;
     unsigned long long* bitmask = data->bitmask;
     unsigned long long maskIdx = data->maskIdx;
+    unsigned long long invMaskIdx = ~maskIdx;
     void (*writeFunc)(int, int, int, int, void*, void*) = data->writeFunc;
 
     int j, k;
@@ -229,16 +228,22 @@ void writeEdgeAware(int x, int y, int w, int h, void* _data, void* _dst) {
         if(OUTSIDE_IMAGE(lx,ly,w,h)) {
             continue;
         }
+        // TODO: this sometimes doens't work?
+        const int idx = IMAGE_INDEX(lx,ly,w);
+        if(bitmask[idx] & invMaskIdx) {
+            continue;
+        }
 
         for(k=0;k<4;k++) {
             const int lx2 = lx+offsetX[k];
             const int ly2 = ly+offsetY[k];
             if(OUTSIDE_IMAGE(lx2,ly2,w,h)) {
-                continue;
+                (*writeFunc)(lx, ly, h, w, data->argData, _dst);
+                break;
             }
 
-            const int idx = IMAGE_INDEX(lx2,ly2,w);
-            if(!(bitmask[idx] & maskIdx)) {
+            const int idx2 = IMAGE_INDEX(lx2,ly2,w);
+            if(!(bitmask[idx2] & maskIdx)) {
                 (*writeFunc)(lx, ly, h, w, data->argData, _dst);
                 break;
             }
@@ -258,10 +263,10 @@ void writeSingleFloatBrush(int x, int y, int w, int h, void* _data, void*_dst) {
 
     for( int y2 = 0;y2 < brushHeight; y2++) {
         for(int x2 = 0;x2 < brushWidth; x2++) {
-            int brushLocx = x2 - hw;
-            int brushLocy = y2 - hh;
-            int cx  = x + brushLocx;
-            int cy  = y + brushLocy;
+            int brushX = x2 - hw;
+            int brushY = y2 - hh;
+            int cx  = x + brushX;
+            int cy  = y + brushY;
 
             if(OUTSIDE_IMAGE(cx,cy,w,h)) {
                 continue;
@@ -276,11 +281,12 @@ void writeSingleFloatBrush(int x, int y, int w, int h, void* _data, void*_dst) {
     }
 }
 
-void freeStructData(BitmaskData* bitmask, IslandLines* lines, Island* islands, ThreadData* threadData, int numThreads, ImageData* imageData) {
+void freeStructData(BitmaskData* bitmask, IslandLines* lines1, IslandLines* lines2, Island* islands, ThreadData* threadData, int numThreads, ImageData* imageData) {
     free(bitmask->bitmask);
     free(bitmask->dilatedBitmask);
     free(bitmask);
-    free(lines);
+    free(lines1);
+    free(lines2);
     free(islands);
     for(int i =0;i<numThreads;i++) {
         free(threadData[i].scratch);
@@ -451,29 +457,52 @@ void clearThreadData(ThreadData* threadData) {
     threadData->bottomRight.y=0;
 }
 
-void copyAndClearThreadScratch(BitmaskData* BitmaskData, unsigned long long maskIdx, ThreadData* threadData, ImageData* info) {
+void constrainArea(ImageData* imageData, ThreadData* threadData) {
+    int width = imageData->width;
+    int height = imageData->height;
+    
+    ShortPair topLeft =     threadData->topLeft;
+    ShortPair bottomRight = threadData->bottomRight;
+
+    int xmin = CLAMP(topLeft.x,0,width - 1);
+    int xmax = CLAMP(bottomRight.x,0,width);
+
+    int ymin = CLAMP(bottomRight.y,0,height - 1);
+    int ymax = CLAMP(topLeft.y,0,height);
+
+    threadData->topLeft.x = xmin;
+    threadData->bottomRight.x = xmax;
+
+    threadData->topLeft.y = ymax;
+    threadData->bottomRight.y = ymin;
+}
+
+void copyAndClearThreadScratch(BitmaskData* BitmaskData, unsigned long long maskIdx, ThreadData* threadData, ImageData* info, float multiplier) {
     int width = info->width;
-    int height = info->height;
     float* dst = info->scratch;
     float* src = threadData->scratch;
 
     unsigned long long* dilatedBitmask = BitmaskData->dilatedBitmask;
 
+    constrainArea(info, threadData);
+
     ShortPair topLeft =     threadData->topLeft;
     ShortPair bottomRight = threadData->bottomRight;
 
-    int xmin = CLAMP(topLeft.x,0,width-1);
-    int xmax = CLAMP(bottomRight.x,0,width-1);
+    int xmin = topLeft.x;
+    int xmax = bottomRight.x;
 
-    int ymin = CLAMP(bottomRight.y,0,height-1);
-    int ymax = CLAMP(topLeft.y,0,height-1);
+    int ymin = bottomRight.y;
+    int ymax = topLeft.y;
 
     for(int y = ymin; y<ymax; y++) {
         for(int x = xmin; x<xmax; x++) {
             int idx = IMAGE_INDEX(x,y,width);
             if(dilatedBitmask[idx] & maskIdx) {
-                //#pragma omp atomic write
-                dst[idx] = __max(dst[idx], src[idx]);
+                // #pragma omp atomic write
+                float val = src[idx] * multiplier;
+                float max = __max(dst[idx], val);
+                dst[idx] = CLAMP(max, 0.0, 1.0);
             }
             src[idx] = 0;
         }
@@ -586,11 +615,11 @@ void drawLineSegmentEdgeAware(unsigned long long* bitmask, unsigned long long ma
     int minY = __min(y0,y1);
     int maxY = __max(y0,y1);
 
-    threadData->topLeft.x=minX - 1;
-    threadData->topLeft.y=maxY + 1;
+    threadData->topLeft.x=minX - 2;
+    threadData->topLeft.y=maxY + 2;
 
-    threadData->bottomRight.x=maxX + 1;
-    threadData->bottomRight.y=minY - 1;
+    threadData->bottomRight.x=maxX + 2;
+    threadData->bottomRight.y=minY - 2;
 
     EdgeAwareData argData;
     argData.bitmask = bitmask;
@@ -599,7 +628,7 @@ void drawLineSegmentEdgeAware(unsigned long long* bitmask, unsigned long long ma
     argData.argData = (void*)colour;
 
     drawLine( threadData->scratch, x0, y0, x1, y1, imageData->width, imageData->height, (void*)(&argData), writeEdgeAware );
-    drawLine( threadData->scratch, x1, y1, x0, y0, imageData->width, imageData->height, (void*)(&argData), writeEdgeAware );
+    // drawLine( threadData->scratch, x1, y1, x0, y0, imageData->width, imageData->height, (void*)(&argData), writeEdgeAware );
 }
 
 void drawLineSegmentThickness(LineData* lineData, ImageData* imageData, ThreadData* threadData) {
@@ -631,6 +660,75 @@ void drawLineSegmentThickness(LineData* lineData, ImageData* imageData, ThreadDa
     freeBrushData(brushData);
 }
 
+void blurLineSegment(LineData* lineData, ImageData* imageData, ThreadData* threadData) {
+    float blur = lineData->blur;
+
+    if(blur == 0.0) {
+        return;
+    }
+
+    int ceilBlur = ceil(blur);
+
+    int width = imageData->width;
+    int height = imageData->height;
+
+    float* scratch = threadData->scratch;
+
+    threadData->topLeft.x -= ceilBlur;
+    threadData->topLeft.y += ceilBlur;
+
+    threadData->bottomRight.x += ceilBlur;
+    threadData->bottomRight.y -= ceilBlur;
+
+    constrainArea(imageData, threadData);
+
+    int baseX = threadData->topLeft.x;
+    int baseY = threadData->bottomRight.y;
+
+    int areaWidth = threadData->bottomRight.x - threadData->topLeft.x;
+    int areaHeight = threadData->topLeft.y - threadData->bottomRight.y;
+
+    int kw = (int)(blur + 2) * 2 + 1;
+    int kc = kw / 2; // center of the kernel
+    float* kernel = buildKernel(kw, blur);
+
+    float* temp = (float*) malloc(areaWidth * areaHeight * sizeof(float));
+
+    // y direction (write to temp)
+    for(int y = 0; y<areaHeight; y++) {
+        for(int x = 0; x<areaWidth; x++) {
+            float sum = 0;
+            int yReal = y + baseY;
+            int xReal = x + baseX;
+            for(int i = -kc;i <= kc; i++ ) {
+                int y1 = reflect(height, yReal + i);
+                sum += kernel[i+kc] * scratch[IMAGE_INDEX(xReal,y1,width)];
+            }
+            temp[IMAGE_INDEX(x,y,areaWidth)] = sum;
+        }
+    }
+
+    // x direction (write to scratch)
+    for(int y = 0; y<areaHeight; y++) {
+        for(int x = 0; x<areaWidth; x++) {
+            float sum = 0;
+            int yReal = y + baseY;
+            int xReal = x + baseX;
+            for(int i = -kc;i<=kc;i++) {
+                int x1 = reflect(areaWidth, x + i);
+                if(OUTSIDE_IMAGE(x1,y,areaWidth,areaHeight)) {
+                    continue;
+                }
+                sum += kernel[i+kc] * temp[IMAGE_INDEX(x1,y,areaWidth)];
+            }
+            scratch[IMAGE_INDEX(xReal, yReal, width)] = sum;
+        }
+    }
+    
+    free(temp);
+    free(kernel);
+}
+
 void drawLineSegment(BitmaskData* bitmaskData, unsigned long long maskIdx, LineData* lineData, ImageData* imageData, ThreadData* threadData) {
 
     // preliminary pass to get the edges that the line would miss
@@ -638,17 +736,17 @@ void drawLineSegment(BitmaskData* bitmaskData, unsigned long long maskIdx, LineD
 
     drawLineSegmentThickness(lineData, imageData, threadData);
 
-    // blurLineSegment(data, imageData, threadData);
+    blurLineSegment(lineData, imageData, threadData);
 
 }
 
-void drawLineSegments(float* dst, BitmaskData* bitmaskData, IslandLines* lines, ImageData* imageData, ThreadData* threadData) {
+void drawLineSegments(float* dst, BitmaskData* bitmaskData, IslandLines* lines, ImageData* imageData, ThreadData* threadData, float multiplier) {
     int iters = lines->numLines;
     unsigned long long islandIdx = 1ULL<<(lines->islandIdx);
     for(int i = 0;i<iters;i++) {
         LineData* line = lines->lineData + i;
         drawLineSegment(bitmaskData, islandIdx, line, imageData, threadData);
-        copyAndClearThreadScratch(bitmaskData, islandIdx, threadData, imageData);
+        copyAndClearThreadScratch(bitmaskData, islandIdx, threadData, imageData, multiplier);
         clearThreadData(threadData);
     }
 }
@@ -670,7 +768,7 @@ void copyTempToDst(ImageData* imageData, float* dst) {
 }
 
 
-void generateBitmask2(float* dst, ImageData* data, Island* islands, int startIdx, int endIdx) {
+void generateBitmaskTest(float* dst, ImageData* data, Island* islands, int startIdx, int endIdx) {
 
     float fwidth = (float)data->width;
     float fheight = (float)data->height;
@@ -692,15 +790,17 @@ void generateBitmask2(float* dst, ImageData* data, Island* islands, int startIdx
     }
 }
 
-void generateEdgeHighlights( float* lineData, float* tuvData, int numEntries, int width, int height, float* dst ) {
+void generateEdgeHighlights( float** lineData, float* tuvData, float* multipliers, int numEntries, int width, int height, float* dst ) {
 
     int threads = omp_get_max_threads();
 
-    IslandLines* lines = convertLineData(lineData, numEntries);
+    IslandLines* lines1 = convertLineData(lineData[0], numEntries);
+    IslandLines* lines2 = convertLineData(lineData[1], numEntries);
     Island* islands = convertIslandData(tuvData, numEntries);
     ImageData* imageData = createImageData(width, height);
     ThreadData* threadData = createThreadData(threads, imageData);
     BitmaskData* bitmaskData = createBitmaskData(width, height);
+
 
     for(int i =0;i<numEntries;i+=64) {
         int i2 = __min(i + 64, numEntries);
@@ -709,13 +809,14 @@ void generateEdgeHighlights( float* lineData, float* tuvData, int numEntries, in
         #pragma omp parallel for
         for( int k = i;k < i2;k++ ) {
             ThreadData* d = threadData + omp_get_thread_num();
-            drawLineSegments(dst, bitmaskData, lines + k, imageData, d);
+            drawLineSegments(dst, bitmaskData, lines1 + k, imageData, d, multipliers[0]);
+            drawLineSegments(dst, bitmaskData, lines2 + k, imageData, d, multipliers[1]);
         }
 
     }
 
     copyTempToDst(imageData, dst);
-    freeStructData(bitmaskData, lines, islands, threadData, threads, imageData);
+    freeStructData(bitmaskData, lines1, lines2, islands, threadData, threads, imageData);
 }
 
 // void generateEdgeHighlights( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int thickness, float blur, float* dst ) {
