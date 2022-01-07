@@ -813,6 +813,71 @@ class BakeSelectedObjects(bpy.types.Operator):
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
         return {'FINISHED'}
 
+        
+class DissolveTo(bpy.types.Operator):
+    """Attempts to dissolve all vertices on the selected meshes that do not correspond to vertices on the active mesh"""
+    bl_idname = "dissolve_to.legion_utils"
+    bl_label = "Legion Dissolve To"
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        obj = bpy.context.active_object
+        others = []
+        for x in bpy.context.selected_objects:
+            if x != obj:
+                others.append(x)
+
+        if not obj:
+            self.report({'ERROR'}, "No object given")
+        
+        vertexMap = self.calculateVertexMap(obj)
+
+        total = 0
+
+        for x in others:
+            total += self.dissolve(vertexMap, x)
+
+        selectObject(obj)
+        self.report({'INFO'}, "Dissolved "+str(total)+" edge(s) from " + str(len(others)) + "object(s)")
+        return {'FINISHED'}
+
+    def calculateVertexMap(self, obj):
+        selectObject(obj)
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        vertexMap = {}
+        for vertex in obj.data.vertices:
+            vertexMap[Vector(vertex.co).freeze()] = True
+
+        return vertexMap
+    
+    def dissolve(self, vertexMap, obj):
+        selectObject(obj)
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_mode(type='EDGE')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        vertices = obj.data.vertices
+
+        count = 0
+
+        frozenVertices = []
+        for v in vertices:
+            frozenVertices.append(Vector(v.co).freeze())
+
+        for edge in obj.data.edges:
+            v = edge.vertices
+            v1 = frozenVertices[v[0]]
+            v2 = frozenVertices[v[1]]
+            if not v1 in vertexMap and not v2 in vertexMap:
+                edge.select = True
+                count += 1
+    
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.dissolve_edges()
+        return count
+
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
     bl_idname = "calculate_edges.legion_utils"
