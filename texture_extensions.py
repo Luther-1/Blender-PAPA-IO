@@ -1,14 +1,14 @@
 bl_info = {
-    "name": "Planetary Annihilation Legion Utils",
+    "name": "Planetary Annihilation PAPA IO Utils",
     "author": "Luther",
     "version": (1, 0, 0),
     "blender": (3, 0, 0),
-    "location": "Search",
+    "location": "3D View > Object > PAPA Texture Tools",
     "description": "Various utility functions",
     "warning": "",
     "wiki_url": "",
     "tracker_url": "",
-    "category": "Utility"
+    "category": "Object"
 }
 
 import bpy
@@ -19,7 +19,6 @@ from math import pi, radians, log2
 from array import array
 from os import path
 import ctypes
-from enum import Enum
 
 TEX_SIZE_INT = "__PAPA_IO_TEXTURE_SIZE"
 OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
@@ -296,8 +295,8 @@ def getOrCreateImage(imageName, size=-1):
 
 class SetupTextureInitial(bpy.types.Operator):
     """Copies a mesh and creates only the diffuse details of it"""
-    bl_idname = "setup_diffuse.legion_utils"
-    bl_label = "Legion Setup Texture Initial"
+    bl_idname = "setup_diffuse.papa_utils"
+    bl_label = "PAPA IO Setup Texture Initial"
     bl_options = {'UNDO'}
 
     size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
@@ -375,8 +374,8 @@ class SetupTextureInitial(bpy.types.Operator):
 
 class SetupTextureComplete(bpy.types.Operator):
     """Copies a mesh and creates several new objects for baking"""
-    bl_idname = "setup_bake.legion_utils"
-    bl_label = "Legion Setup Texture Complete"
+    bl_idname = "setup_bake.papa_utils"
+    bl_label = "PAPA IO Setup Texture Complete"
     bl_options = {'UNDO'}
 
     def findDiffuse(self, context):
@@ -539,11 +538,15 @@ class SetupTextureComplete(bpy.types.Operator):
 
     def setupBake(self, context):
         diffuse = None
-        for obj in self.__builtObjects:
+        for obj in bpy.context.selected_objects:
             if getObjectType(obj) == OBJ_TYPES.DIFFUSE:
                 diffuse = obj
                 break
+        if diffuse == None:
+            self.report({'ERROR'}, "Selected object must have been created with setup texture initial")
+            return False
 
+        self.__builtObjects.append(diffuse)
         size = diffuse[TEX_SIZE_INT]
         name = diffuse[OBJ_NAME_STRING]
 
@@ -750,8 +753,8 @@ class SetupTextureComplete(bpy.types.Operator):
 
 class BakeSelectedObjects(bpy.types.Operator):
     """Bakes all selected objects' textures."""
-    bl_idname = "bake_objects.legion_utils"
-    bl_label = "Legion Bake Objects"
+    bl_idname = "bake_objects.papa_utils"
+    bl_label = "PAPA IO Bake Objects"
     bl_options = {'REGISTER','UNDO'}
 
     def alterUvs(self, mesh, idx, move):
@@ -764,7 +767,8 @@ class BakeSelectedObjects(bpy.types.Operator):
                     uvData[loopIdx].uv[0]+=move
     
     def execute(self, context):
-        success= 0
+        success = 0
+        objects = []
         for obj in bpy.context.selected_objects:
             try:
                 shouldBake = obj[TEX_SHOULD_BAKE]
@@ -813,11 +817,10 @@ class BakeSelectedObjects(bpy.types.Operator):
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
         return {'FINISHED'}
 
-        
 class DissolveTo(bpy.types.Operator):
     """Attempts to dissolve all vertices on the selected meshes that do not correspond to vertices on the active mesh"""
-    bl_idname = "dissolve_to.legion_utils"
-    bl_label = "Legion Dissolve To"
+    bl_idname = "dissolve_to.papa_utils"
+    bl_label = "PAPA IO Dissolve To"
     bl_options = {'UNDO'}
 
     def execute(self, context):
@@ -880,8 +883,8 @@ class DissolveTo(bpy.types.Operator):
 
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
-    bl_idname = "calculate_edges.legion_utils"
-    bl_label = "Legion Calculate Edges"
+    bl_idname = "calculate_edges.papa_utils"
+    bl_label = "PA Calculate Edges"
     bl_options = {'REGISTER','UNDO'}
     DEFAULT_ANGLE = radians(10)
 
@@ -936,8 +939,8 @@ class CalulateEdgeSharp(bpy.types.Operator):
 
 class TweakEdgeHighlights(bpy.types.Operator):
     """Draws the edge highlights to the specified texture"""
-    bl_idname = "tweak_edges.legion_utils"
-    bl_label = "Legion Tweak Edge Highlights"
+    bl_idname = "tweak_edges.papa_utils"
+    bl_label = "PAPA IO Tweak Edge Highlights"
     bl_options = {'REGISTER','UNDO'}
 
     # this is a huge mess...
@@ -1221,8 +1224,8 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
 class TweakDistanceField(bpy.types.Operator):
     """Draws the distance field of the specified object"""
-    bl_idname = "tweak_distance.legion_utils"
-    bl_label = "Legion Tweak Distance Field"
+    bl_idname = "tweak_distance.papa_utils"
+    bl_label = "PAPA IO Tweak Distance Field"
     bl_options = {'REGISTER','UNDO'}
 
     texelInfo: FloatProperty(name="TEMP_texelinfo",description="The value for TEMP_texelinfo", min=-1, max=4096, default=-1)
@@ -1363,8 +1366,8 @@ class TweakDistanceField(bpy.types.Operator):
 
 class PackUndersideFaces(bpy.types.Operator):
     """Packs any UVs on faces that point down. Sensitive to hidden faces"""
-    bl_idname = "pack_underside.legion_utils"
-    bl_label = "Legion Pack Underside UVs"
+    bl_idname = "pack_underside.papa_utils"
+    bl_label = "PAPA IO Pack Underside UVs"
     bl_options = {'REGISTER','UNDO'}
 
     packingFactor: FloatProperty(name="Factor",description="How much to multiply underside UVs by", min=0, max=1, default=0.25)
@@ -1428,8 +1431,8 @@ class PackUndersideFaces(bpy.types.Operator):
 
 class SaveTextures(bpy.types.Operator):
     """Saves the textures of the specified object to the local directory"""
-    bl_idname = "save_textures.legion_utils"
-    bl_label = "Legion Save Images"
+    bl_idname = "save_textures.papa_utils"
+    bl_label = "PAPA IO Save Images"
     bl_options = {'REGISTER','UNDO'}
     
     def execute(self, context):
@@ -1474,8 +1477,8 @@ class SaveTextures(bpy.types.Operator):
 
 class UpdateLegacy(bpy.types.Operator):
     """Updates any legacy naming conventions used by previous versions of this tool, allowing for modern functions to work properly"""
-    bl_idname = "update_legacy.legion_utils"
-    bl_label = "Legion Update Legacy Data"
+    bl_idname = "update_legacy.papa_utils"
+    bl_label = "PAPA IO Update Legacy Data"
     bl_options = {'REGISTER','UNDO'}
 
     meshName: StringProperty(name="Mesh Name",description="The mesh name to apply, leave blank to do nothing",default="")
@@ -1495,35 +1498,6 @@ class UpdateLegacy(bpy.types.Operator):
 
         # change old legacy names
         for obj in objects:
-            try:
-                objname = obj["__LEGION_MESH_NAME"]
-                obj[OBJ_NAME_STRING] = objname
-                del obj["__LEGION_MESH_NAME"]
-                success+=1
-            except:
-                pass
-            try:
-                texsize = obj["__LEGION_TEXTURE_SIZE"]
-                obj[TEX_SIZE_INT] = texsize
-                del obj["__LEGION_TEXTURE_SIZE"]
-                success+=1
-            except:
-                pass
-            try:
-                texname = obj["__LEGION_TEXTURE_NAME"]
-                obj[TEX_NAME_STRING] = texname
-                del obj["__LEGION_TEXTURE_NAME"]
-                success+=1
-            except:
-                pass
-            try:
-                edgeHighlightTex = obj["__LEGION_EDGE_HIGHLIGHTS"]
-                obj[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
-                del obj["__LEGION_EDGE_HIGHLIGHTS"]
-                obj[TEX_NAME_STRING] = edgeHighlightTex.name
-                success+=1
-            except:
-                pass
             try:
                 supersample = obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
                 obj[TEX_SHOULD_SUPERSAMPLE] = supersample
@@ -1740,34 +1714,76 @@ if path.exists(libPath):
         textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int,
                 ctypes.c_int, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateDistanceField.resType = None
-        print("Legion Utils: Texture Library ETex.dll successfully loaded")
+        print("PAPA IO: Texture Library ETex.dll successfully loaded")
     except Exception as e:
         print("TEXTURE LIBRARY MISSING ("+str(e)+")")
 
+class PapaIOFunctionList(bpy.types.PropertyGroup):
+    functions = [
+        ("0", "Setup Texture Initial", "Copies and creates a new mesh for texturing", "", 0),
+        ("1", "Setup Texture Complete", "Copies the diffuse mesh and creates several meshes for additional texturing", "", 1),
+        ("2", "Pack Underside Faces", "Minimizes UV islands based on face direction", "", 2),
+        ("3", "Calculate Edge Sharp", "Applies edge sharp to edges that exceed the max angle", "", 3),
+        ("4", "Dissolve To", "Attempts to dissolve extra edges on selected models that don't match to the active model", "", 4),
+        ("5", "Tweak Edge Highlights", "Tweak edge highlights of the edge highlight model", "", 5),
+        ("6", "Tweak Distance Field", "Tweak distance field of the distance field model", "", 6),
+        ("7", "Bake Selected Objects", "Texture bakes all selected models", "", 7),
+        ("8", "Save Selected Textures", "Saves textures of selected objects to the Blender file's directory", "", 8),
+    ]
+
+    def execute(self, context):
+        _classes[int(self.textureFuncIndex)]()
+
+    textureFuncIndex = bpy.props.EnumProperty(
+        items=functions,
+        description="Texture functions for Blender PAPA IO",
+        default="setup_diffuse.papa_utils",
+        update=execute
+    )
+
+class PapaIOFunctionPanel(bpy.types.panel):
+    """Panel for Blender PAPA IO functions"""
+    bl_label = "PAPA Texture Tools"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'OBJECT'
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.label(text="PAPA Texture Tools:")
+        col.prop(context.scene.SCENE_PAPA_TEXTURE_FUNCTIONS, "Function")
 
 
 _classes = (
     SetupTextureInitial,
     SetupTextureComplete,
-    DissolveTo,
-    BakeSelectedObjects,
+    PackUndersideFaces,
     CalulateEdgeSharp,
+    DissolveTo,
     TweakEdgeHighlights,
     TweakDistanceField,
-    PackUndersideFaces,
-    UpdateLegacy,
+    BakeSelectedObjects,
     SaveTextures,
+    UpdateLegacy,
+    PapaIOFunctionList,
 )
 
-def register():
+def view3d_func_texture(self, context):
+    self.layout.operator(PapaIOFunctionPanel.bl_idname, text="PAPA IO Texture")
+
+def papa_io_register_texture():
     from bpy.utils import register_class
     for cls in _classes:
         register_class(cls)
+    bpy.types.Scene.SCENE_PAPA_TEXTURE_FUNCTIONS = bpy.props.PointerProperty(type = PapaIOFunctionList)
+    bpy.types.VIEW3D_MT_object.append(view3d_func_texture)
     
-def unregister():
+def papa_io_unregister_texture():
     from bpy.utils import unregister_class
     for cls in reversed(_classes):
         unregister_class(cls)
+    del bpy.types.Scene.SCENE_PAPA_TEXTURE_FUNCTIONS
+    bpy.types.VIEW3D_MT_object.remove(view3d_func_texture)
 
 if __name__ == "__main__":
-    register()
+    papa_io_register_texture()
