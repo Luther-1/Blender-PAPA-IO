@@ -1,8 +1,8 @@
-
-.vscode/.ropeproject/objectdb
-.vscode/.ropeproject/config.py
+.vscode/*
 *.pyc
 *.cmd
 *.dll
 *.so
 *.dylib
+*.exe
+main.c
