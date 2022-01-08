@@ -36,11 +36,16 @@ bl_info = {
 if "bpy" in locals():
     import imp
     if ("import_papa") in locals():
-        imp.reload(import_papa)
+        imp.reload(import_papa) # type: ignore
     if ("export_papa") in locals():
-        imp.reload(export_papa)
+        imp.reload(export_papa) # type: ignore
     if("papafile" in locals()):
-        imp.reload(papafile)
+        imp.reload(papafile) # type: ignore
+    if("texture_extensions" in locals()):
+        imp.reload(texture_extensions) # type: ignore
+
+from .texture_extensions import papa_io_register_texture, papa_io_unregister_texture
+
 import bpy
 from copy import copy
 from bpy.props import *
@@ -698,6 +703,7 @@ def register():
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST = CollectionProperty(type = PapaExportMaterialListItem)
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE = IntProperty()
     bpy.types.Scene.SCENE_PAPA_EXPORT_SETTINGS = PointerProperty(type=ExportPapaUISettings)
+    papa_io_register_texture()
     
 def unregister():
     from bpy.utils import unregister_class
@@ -709,6 +715,7 @@ def unregister():
     del bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST
     del bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE
     del bpy.types.Scene.SCENE_PAPA_EXPORT_SETTINGS
+    papa_io_unregister_texture()
 
 if __name__ == "__main__":
     register()

@@ -51,10 +51,15 @@ def selectObject(obj):
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
 
-def duplicateObject(obj, newName):
+def duplicateObject(obj, newName, prepend = True):
     n = obj.copy()
     n.data = obj.data.copy()
     n.name = newName
+    if prepend:
+        if not OBJ_NAME_STRING in obj:
+            print("Warning: Duplicated object target has no name string")
+        else:
+            n.name = obj[OBJ_NAME_STRING] + "_" + n.name
     for prop in dict(n):
         if str(prop).startswith("__PAPA_IO_"):
             del n[str(prop)]
@@ -332,7 +337,7 @@ class SetupTextureInitial(bpy.types.Operator):
 
         texname = obj[OBJ_NAME_STRING]+"_diffuse_bake"
         diffuseTex = getOrCreateImage(obj[OBJ_NAME_STRING]+"_diffuse_bake",texSize)
-        diffuse = duplicateObject(obj,"diffuse")
+        diffuse = duplicateObject(obj, OBJ_TYPES.DIFFUSE.lower())
         diffuse.data.materials.clear()
         diffuse.location[0]+=diffuse.dimensions.x * 2
         diffuse[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
@@ -453,7 +458,7 @@ class SetupTextureComplete(bpy.types.Operator):
         # create the material object
         texname = name+"_material_bake"
         materialTex = getOrCreateImage(texname,texSize)
-        material = duplicateObject(obj,"material")
+        material = duplicateObject(obj, OBJ_TYPES.MATERIAL.lower())
         material.data.materials.clear()
         material.location[0]+=material.dimensions.x * 2
         material[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
@@ -483,7 +488,7 @@ class SetupTextureComplete(bpy.types.Operator):
         # create the mask object
         texname = name+"_mask_bake"
         maskTex = getOrCreateImage(texname,texSize)
-        mask = duplicateObject(obj,"mask")
+        mask = duplicateObject(obj, OBJ_TYPES.MASK.lower())
         mask.data.materials.clear()
         mask.location[0]+=mask.dimensions.x * 4
         mask[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
@@ -516,7 +521,7 @@ class SetupTextureComplete(bpy.types.Operator):
         # create the AO object
         texname = name+"_ao_bake"
         aoTex = getOrCreateImage(texname,texSize)
-        ao = duplicateObject(obj,"ao")
+        ao = duplicateObject(obj, OBJ_TYPES.AO.lower())
         ao.data.materials.clear()
         ao.location[0]+=ao.dimensions.x * 6
         ao[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
@@ -561,7 +566,7 @@ class SetupTextureComplete(bpy.types.Operator):
         
         edgeHighlightTex = getOrCreateImage(name+"_edge_highlights",texSize)
         target = ao
-        edgeHighlight = duplicateObject(target,"edge highlights")
+        edgeHighlight = duplicateObject(target, OBJ_TYPES.EDGE_HIGHLIGHT.lower())
         edgeHighlight.data.materials.clear()
         if ao:
             edgeHighlight.location[0]+=edgeHighlight.dimensions.x * 2
@@ -615,7 +620,7 @@ class SetupTextureComplete(bpy.types.Operator):
             target = diffuse
         if not target:
             target = bpy.context.active_object
-        distanceField = duplicateObject(target,"distance field")
+        distanceField = duplicateObject(target,OBJ_TYPES.DISTANCE_FIELD.lower())
         distanceField.data.materials.clear()
         if edgeObj and edgeObj.location[0]>=locObj.location[0]:
             distanceField.location[0]+=distanceField.dimensions.x * 2
@@ -884,7 +889,7 @@ class DissolveTo(bpy.types.Operator):
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
     bl_idname = "calculate_edges.papa_utils"
-    bl_label = "PA Calculate Edges"
+    bl_label = "PAPA IO Calculate Edges"
     bl_options = {'REGISTER','UNDO'}
     DEFAULT_ANGLE = radians(10)
 
@@ -963,7 +968,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         try:
             tex = obj[EDGE_HIGHLIGHT_TEXTURE]
         except:
-            self.report({'ERROR'},"Selected object must have been previously created by \"setup edge highlights\"")
+            self.report({'ERROR'},"Selected object must be an edge highlights object")
             return {'CANCELLED'}
         
 
@@ -1476,7 +1481,7 @@ class SaveTextures(bpy.types.Operator):
         return {'FINISHED'}
 
 class UpdateLegacy(bpy.types.Operator):
-    """Updates any legacy naming conventions used by previous versions of this tool, allowing for modern functions to work properly"""
+    """Updates properties of an object that were defined previously by the plugin"""
     bl_idname = "update_legacy.papa_utils"
     bl_label = "PAPA IO Update Legacy Data"
     bl_options = {'REGISTER','UNDO'}
@@ -1559,6 +1564,9 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_NAME_STRING in obj or obj[OBJ_NAME_STRING] != self.meshName:
                     success+=1
                     obj[OBJ_NAME_STRING] = self.meshName
+
+                if (getObjectType(obj) != ""):
+                    obj.name = self.meshName +"_" + getObjectType(obj).lower()
         
         # link the nodes to textures if they are not already there
         for obj in objects:
@@ -1575,7 +1583,7 @@ class UpdateLegacy(bpy.types.Operator):
         
         # general update / add properties
         for obj in objects:
-            if obj.name=="diffuse":
+            if getObjectType(obj) == OBJ_TYPES.DIFFUSE:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
@@ -1611,13 +1619,13 @@ class UpdateLegacy(bpy.types.Operator):
                     for _ in range(9):
                         bpy.ops.object.material_slot_move(direction="UP")
                     success+=1
-                if obj.name=="ao":
+                if getObjectType(obj)==OBJ_TYPES.AO:
                     if not "ao_bake_ignore" in obj.data.materials and TEX_NAME_STRING in obj:
                         obj.data.materials.append(createMaterial("ao_bake_ignore",(0xff,0xff,0xff),getOrCreateImage(obj[TEX_NAME_STRING],obj[TEX_SIZE_INT]*2),attach=False))
                         success+=1
 
 
-            if obj.name=="material":
+            if getObjectType(obj)==OBJ_TYPES.MATERIAL:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
@@ -1627,7 +1635,7 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
                     success+=1
-            if obj.name=="mask":
+            if getObjectType(obj)==OBJ_TYPES.MASK:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
@@ -1637,7 +1645,7 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
                     success+=1
-            if obj.name=="ao":
+            if getObjectType(obj)==OBJ_TYPES.AO:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
@@ -1647,7 +1655,7 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.AO
                     success+=1
-            if obj.name=="distance field":
+            if getObjectType(obj)==OBJ_TYPES.DISTANCE_FIELD:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
                     success+=1
@@ -1662,7 +1670,7 @@ class UpdateLegacy(bpy.types.Operator):
                     img = getOrCreateImage(texname, obj[TEX_SIZE_INT])
                     obj[DISTANCE_FIELD_TEXTURE] = img
                     success+=1
-            if obj.name=="edge highlights":
+            if getObjectType(obj)==OBJ_TYPES.EDGE_HIGHLIGHT:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
                     success+=1
@@ -1702,6 +1710,35 @@ class UpdateLegacy(bpy.types.Operator):
         
         return {'FINISHED'}
 
+
+class TextureFunctions(bpy.types.Menu):
+    """Panel for Blender PAPA IO functions"""
+    bl_label = "PAPA Texture Tools"
+    bl_idname = "PAPA_TEXTURE_MT_UBERENT_PAPA"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'TOOLS'
+
+    options = [
+        SetupTextureInitial,
+        SetupTextureComplete,
+        PackUndersideFaces,
+        CalulateEdgeSharp,
+        DissolveTo,
+        TweakEdgeHighlights,
+        TweakDistanceField,
+        BakeSelectedObjects,
+        SaveTextures,
+        UpdateLegacy,
+    ]
+
+    def draw(self, context):
+        l = self.layout
+
+        for option in self.options:
+            row = l.row()
+            row.operator(option.bl_idname, text=option.bl_label)
+
+
 libPath = path.dirname(path.abspath(__file__)) + path.sep + "ETex.dll"
 textureLibrary = None
 if path.exists(libPath):
@@ -1718,43 +1755,7 @@ if path.exists(libPath):
     except Exception as e:
         print("TEXTURE LIBRARY MISSING ("+str(e)+")")
 
-class PapaIOFunctionList(bpy.types.PropertyGroup):
-    functions = [
-        ("0", "Setup Texture Initial", "Copies and creates a new mesh for texturing", "", 0),
-        ("1", "Setup Texture Complete", "Copies the diffuse mesh and creates several meshes for additional texturing", "", 1),
-        ("2", "Pack Underside Faces", "Minimizes UV islands based on face direction", "", 2),
-        ("3", "Calculate Edge Sharp", "Applies edge sharp to edges that exceed the max angle", "", 3),
-        ("4", "Dissolve To", "Attempts to dissolve extra edges on selected models that don't match to the active model", "", 4),
-        ("5", "Tweak Edge Highlights", "Tweak edge highlights of the edge highlight model", "", 5),
-        ("6", "Tweak Distance Field", "Tweak distance field of the distance field model", "", 6),
-        ("7", "Bake Selected Objects", "Texture bakes all selected models", "", 7),
-        ("8", "Save Selected Textures", "Saves textures of selected objects to the Blender file's directory", "", 8),
-    ]
-
-    def execute(self, context):
-        _classes[int(self.textureFuncIndex)]()
-
-    textureFuncIndex = bpy.props.EnumProperty(
-        items=functions,
-        description="Texture functions for Blender PAPA IO",
-        default="setup_diffuse.papa_utils",
-        update=execute
-    )
-
-class PapaIOFunctionPanel(bpy.types.panel):
-    """Panel for Blender PAPA IO functions"""
-    bl_label = "PAPA Texture Tools"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'OBJECT'
-
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column()
-        col.label(text="PAPA Texture Tools:")
-        col.prop(context.scene.SCENE_PAPA_TEXTURE_FUNCTIONS, "Function")
-
-
-_classes = (
+_papa_texture_extension_classes = (
     SetupTextureInitial,
     SetupTextureComplete,
     PackUndersideFaces,
@@ -1765,25 +1766,25 @@ _classes = (
     BakeSelectedObjects,
     SaveTextures,
     UpdateLegacy,
-    PapaIOFunctionList,
+    TextureFunctions,
 )
 
-def view3d_func_texture(self, context):
-    self.layout.operator(PapaIOFunctionPanel.bl_idname, text="PAPA IO Texture")
+def view3d_menu_func_texture(self, context):
+    self.layout.menu(TextureFunctions.bl_idname, text="PAPA Texture Extensions")
 
 def papa_io_register_texture():
     from bpy.utils import register_class
-    for cls in _classes:
+    for cls in _papa_texture_extension_classes:
         register_class(cls)
-    bpy.types.Scene.SCENE_PAPA_TEXTURE_FUNCTIONS = bpy.props.PointerProperty(type = PapaIOFunctionList)
-    bpy.types.VIEW3D_MT_object.append(view3d_func_texture)
+    
+    bpy.types.VIEW3D_MT_object.append(view3d_menu_func_texture)
     
 def papa_io_unregister_texture():
     from bpy.utils import unregister_class
-    for cls in reversed(_classes):
+    for cls in reversed(_papa_texture_extension_classes):
         unregister_class(cls)
-    del bpy.types.Scene.SCENE_PAPA_TEXTURE_FUNCTIONS
-    bpy.types.VIEW3D_MT_object.remove(view3d_func_texture)
+
+    bpy.types.VIEW3D_MT_object.remove(view3d_menu_func_texture)
 
 if __name__ == "__main__":
     papa_io_register_texture()
