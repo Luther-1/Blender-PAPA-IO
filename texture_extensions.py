@@ -1,15 +1,25 @@
-bl_info = {
-    "name": "Planetary Annihilation PAPA IO Utils",
-    "author": "Luther",
-    "version": (1, 0, 0),
-    "blender": (3, 0, 0),
-    "location": "3D View > Object > PAPA Texture Tools",
-    "description": "Various utility functions",
-    "warning": "",
-    "wiki_url": "",
-    "tracker_url": "",
-    "category": "Object"
-}
+# The MIT License
+# 
+# Copyright (c) 2013, 2014  Raevn
+# Copyright (c) 2021, 2022  Marcus Der      marcusder@hotmail.com
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 import bpy
 from bpy_extras import mesh_utils;
@@ -301,7 +311,7 @@ def getOrCreateImage(imageName, size=-1):
 class SetupTextureInitial(bpy.types.Operator):
     """Copies a mesh and creates only the diffuse details of it"""
     bl_idname = "setup_diffuse.papa_utils"
-    bl_label = "PAPA IO Setup Texture Initial"
+    bl_label = "Setup Texture Initial"
     bl_options = {'UNDO'}
 
     size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
@@ -380,7 +390,7 @@ class SetupTextureInitial(bpy.types.Operator):
 class SetupTextureComplete(bpy.types.Operator):
     """Copies a mesh and creates several new objects for baking"""
     bl_idname = "setup_bake.papa_utils"
-    bl_label = "PAPA IO Setup Texture Complete"
+    bl_label = "Setup Texture Complete"
     bl_options = {'UNDO'}
 
     def findDiffuse(self, context):
@@ -759,7 +769,7 @@ class SetupTextureComplete(bpy.types.Operator):
 class BakeSelectedObjects(bpy.types.Operator):
     """Bakes all selected objects' textures."""
     bl_idname = "bake_objects.papa_utils"
-    bl_label = "PAPA IO Bake Objects"
+    bl_label = "Bake Objects"
     bl_options = {'REGISTER','UNDO'}
 
     def alterUvs(self, mesh, idx, move):
@@ -825,7 +835,7 @@ class BakeSelectedObjects(bpy.types.Operator):
 class DissolveTo(bpy.types.Operator):
     """Attempts to dissolve all vertices on the selected meshes that do not correspond to vertices on the active mesh"""
     bl_idname = "dissolve_to.papa_utils"
-    bl_label = "PAPA IO Dissolve To"
+    bl_label = "Dissolve To"
     bl_options = {'UNDO'}
 
     def execute(self, context):
@@ -889,7 +899,7 @@ class DissolveTo(bpy.types.Operator):
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
     bl_idname = "calculate_edges.papa_utils"
-    bl_label = "PAPA IO Calculate Edges"
+    bl_label = "Calculate Edges"
     bl_options = {'REGISTER','UNDO'}
     DEFAULT_ANGLE = radians(10)
 
@@ -945,7 +955,7 @@ class CalulateEdgeSharp(bpy.types.Operator):
 class TweakEdgeHighlights(bpy.types.Operator):
     """Draws the edge highlights to the specified texture"""
     bl_idname = "tweak_edges.papa_utils"
-    bl_label = "PAPA IO Tweak Edge Highlights"
+    bl_label = "Tweak Edge Highlights"
     bl_options = {'REGISTER','UNDO'}
 
     # this is a huge mess...
@@ -1230,7 +1240,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
 class TweakDistanceField(bpy.types.Operator):
     """Draws the distance field of the specified object"""
     bl_idname = "tweak_distance.papa_utils"
-    bl_label = "PAPA IO Tweak Distance Field"
+    bl_label = "Tweak Distance Field"
     bl_options = {'REGISTER','UNDO'}
 
     texelInfo: FloatProperty(name="TEMP_texelinfo",description="The value for TEMP_texelinfo", min=-1, max=4096, default=-1)
@@ -1372,7 +1382,7 @@ class TweakDistanceField(bpy.types.Operator):
 class PackUndersideFaces(bpy.types.Operator):
     """Packs any UVs on faces that point down. Sensitive to hidden faces"""
     bl_idname = "pack_underside.papa_utils"
-    bl_label = "PAPA IO Pack Underside UVs"
+    bl_label = "Pack Underside UVs"
     bl_options = {'REGISTER','UNDO'}
 
     packingFactor: FloatProperty(name="Factor",description="How much to multiply underside UVs by", min=0, max=1, default=0.25)
@@ -1437,7 +1447,7 @@ class PackUndersideFaces(bpy.types.Operator):
 class SaveTextures(bpy.types.Operator):
     """Saves the textures of the specified object to the local directory"""
     bl_idname = "save_textures.papa_utils"
-    bl_label = "PAPA IO Save Images"
+    bl_label = "Save Images"
     bl_options = {'REGISTER','UNDO'}
     
     def execute(self, context):
@@ -1483,7 +1493,7 @@ class SaveTextures(bpy.types.Operator):
 class UpdateLegacy(bpy.types.Operator):
     """Updates properties of an object that were defined previously by the plugin"""
     bl_idname = "update_legacy.papa_utils"
-    bl_label = "PAPA IO Update Legacy Data"
+    bl_label = "Update Legacy Data"
     bl_options = {'REGISTER','UNDO'}
 
     meshName: StringProperty(name="Mesh Name",description="The mesh name to apply, leave blank to do nothing",default="")

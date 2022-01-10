@@ -1,7 +1,7 @@
 # The MIT License
 # 
 # Copyright (c) 2013, 2014  Raevn
-# Copyright (c) 2021        Marcus Der      marcusder@hotmail.com
+# Copyright (c) 2021, 2022  Marcus Der      marcusder@hotmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,7 @@
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (1, 1, 2),
+    "version": (1, 2, 0),
     "blender": (3, 0, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
