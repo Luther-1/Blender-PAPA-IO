@@ -100,7 +100,6 @@ void decodeTexture( unsigned char* data, int width, int height, int format, floa
         for(int y=0; y<height; y++) {
             for (int x = 0; x<width; x++) {
                 int i = (x + (heightZero - y) * width) * 4;
-                int i2 = (x + y * width) * 4;
                 dst[i] = (float)data[i]/255.0;
                 dst[i+1] = (float)data[i+1]/255.0;
                 dst[i+2] = (float)data[i+2]/255.0;
