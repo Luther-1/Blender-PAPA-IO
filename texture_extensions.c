@@ -826,6 +826,7 @@ void generateEdgeHighlights( float** lineData, float* tuvData, float* multiplier
 
     IslandLines* lines1 = convertLineData(lineData[0], numEntries);
     IslandLines* lines2 = convertLineData(lineData[1], numEntries);
+    IslandLines* lines3 = convertLineData(lineData[2], numEntries);
     Island* islands = convertIslandData(tuvData, numEntries);
     ImageData* imageData = createImageData(width, height);
     ThreadData* threadData = createThreadData(threads, imageData);
@@ -841,6 +842,7 @@ void generateEdgeHighlights( float** lineData, float* tuvData, float* multiplier
             ThreadData* d = threadData + omp_get_thread_num();
             drawLineSegments(dst, bitmaskData, lines1 + k, imageData, d, multipliers[0]);
             drawLineSegments(dst, bitmaskData, lines2 + k, imageData, d, multipliers[1]);
+            drawLineSegments(dst, bitmaskData, lines3 + k, imageData, d, multipliers[2]);
         }
 
     }

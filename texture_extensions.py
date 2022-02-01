@@ -37,12 +37,9 @@ TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
 TEX_SHOULD_SUPERSAMPLE = "__PAPA_IO_TEXTURE_SUPERSAMPLE"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
-EDGE_HIGHLIGHT_DILATE_A = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE_A"
-EDGE_HIGHLIGHT_BLUR_A = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR_A"
-EDGE_HIGHLIGHT_MULTIPLIER_A = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER_A"
-EDGE_HIGHLIGHT_DILATE_B = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE_B"
-EDGE_HIGHLIGHT_BLUR_B = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR_B"
-EDGE_HIGHLIGHT_MULTIPLIER_B = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER_B"
+EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
+EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
+EDGE_HIGHLIGHT_MULTIPLIER = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
@@ -847,6 +844,7 @@ class DissolveTo(bpy.types.Operator):
 
         if not obj:
             self.report({'ERROR'}, "No object given")
+            return {'FINISHED'}
         
         vertexMap = self.calculateVertexMap(obj)
 
@@ -958,14 +956,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
     bl_label = "Tweak Edge Highlights"
     bl_options = {'REGISTER','UNDO'}
 
-    # this is a huge mess...
-    lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50,default=0.5)
-    blurAmount: FloatProperty(name="Blur",description="The amount to blur the edge highlights", min=0, max=50, default=4)
-    multiplier: FloatProperty(name="Multiplier",description="How much to multiply the values by", min=0, max=10, default=0.5)
-
-    lineThickness2: FloatProperty(name="Redraw Width", description="The thickness to draw the edge highlights at for the second pass",min=0,max=50,default=1.5)
-    blurAmount2: FloatProperty(name="Redraw Blur",description="The amount to blur the edge highlights for the second pass", min=0, max=50, default=0.5)
-    multiplier2: FloatProperty(name="Redraw Multiplier",description="How much to multiply the values by for the second pass", min=0, max=10, default=1)
+    lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50,default=1)
+    blurAmount: FloatProperty(name="Blur",description="The amount to blur the edge highlights", min=0, max=50, default=0.5)
+    multiplier: FloatProperty(name="Multiplier",description="How much to multiply the values by", min=0, max=10, default=1)
 
     maxTaper: FloatProperty(name="Max Taper Angle",description="The largest angle that tapering is applied", min=0, max=radians(180), default=radians(90), subtype='ANGLE')
     minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(180), default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
@@ -983,7 +976,6 @@ class TweakEdgeHighlights(bpy.types.Operator):
         
 
         self.processObject(obj, tex, self.lineThickness, self.blurAmount, self.multiplier,
-                                        self.lineThickness2, self.blurAmount2, self.multiplier2,
                                         self.minTaper, self.maxTaper, self.taperFactor)
 
         return {'FINISHED'}
@@ -995,13 +987,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
             return {'CANCELLED'}
 
         try:
-            self.lineThickness = obj[EDGE_HIGHLIGHT_DILATE_A]
-            self.blurAmount = obj[EDGE_HIGHLIGHT_BLUR_A]
-            self.multiplier = obj[EDGE_HIGHLIGHT_MULTIPLIER_A]
-
-            self.lineThickness2 = obj[EDGE_HIGHLIGHT_DILATE_B]
-            self.blurAmount2 = obj[EDGE_HIGHLIGHT_BLUR_B]
-            self.multiplier2 = obj[EDGE_HIGHLIGHT_MULTIPLIER_B]
+            self.lineThickness = obj[EDGE_HIGHLIGHT_DILATE]
+            self.blurAmount = obj[EDGE_HIGHLIGHT_BLUR]
+            self.multiplier = obj[EDGE_HIGHLIGHT_MULTIPLIER]
         except:
             pass
 
@@ -1030,23 +1018,19 @@ class TweakEdgeHighlights(bpy.types.Operator):
                 edgeMap[x] = arr[0].angle(arr[1])
         return edgeMap
 
-    def getLines(self, mesh, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, baseThickness1, baseBlur1, baseThickness2, baseBlur2):
+    def getLines(self, mesh, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, baseThickness, baseBlur):
         selectObject(mesh)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         angleDiff = maxAngle - minAngle
         angleFactor = 1 / angleDiff if angleDiff > 0 else 0
-        minThickness1 = minTaper * baseThickness1
-        thicknessAngleFactor1 = (baseThickness1 - minThickness1) * angleFactor
-
-        minThickness2 = minTaper * baseThickness2
-        thicknessAngleFactor2 = (baseThickness2 - minThickness2) * angleFactor
+        minThickness = minTaper * baseThickness
+        thicknessAngleFactor = (baseThickness - minThickness) * angleFactor
 
         averageIslandSize = sum(islandSizes) / len(islandSizes)
         averageIslandSizeDiv = averageIslandSize / 2
 
-        lines1 = [] # [num_lines_in_island, islandIdx, [x1,y1,x2,y2, thickness, blur...]...]
-        lines2 = []
+        lines = [] # [num_lines_in_island, islandIdx, [x1,y1,x2,y2, thickness, blur...]...]
 
         if len(mesh.data.uv_layers) == 0:
             self.report({'ERROR'},"Mesh has no UV layer")
@@ -1058,14 +1042,12 @@ class TweakEdgeHighlights(bpy.types.Operator):
         loops = mesh.data.loops
 
         for islandIdx in range(len(islands)):
-            lines1.append(-1)
-            lines2.append(-1)
+            lines.append(-1)
 
             count = 0
-            arrIdx = len(lines1) - 1
+            arrIdx = len(lines) - 1
 
-            lines1.append(float(islandIdx))
-            lines2.append(float(islandIdx))
+            lines.append(float(islandIdx))
 
             islandSize = islandSizes[islandIdx]
             for poly in islands[islandIdx]:
@@ -1082,38 +1064,27 @@ class TweakEdgeHighlights(bpy.types.Operator):
                     c2 = uv[loopIdx].uv[1]
                     c3 = uv[loopIdx2].uv[0]
                     c4 = uv[loopIdx2].uv[1]
-                    lines1.append(c1)
-                    lines1.append(c2)
-                    lines1.append(c3)
-                    lines1.append(c4)
-
-                    lines2.append(c1)
-                    lines2.append(c2)
-                    lines2.append(c3)
-                    lines2.append(c4)
+                    lines.append(c1)
+                    lines.append(c2)
+                    lines.append(c3)
+                    lines.append(c4)
 
                     # taper pass
                     edgeAngle = edgeMap[edgeIndex]
                     if edgeAngle >= minAngle and edgeAngle < maxAngle:
-                        thickness1 = (edgeAngle - minAngle) * thicknessAngleFactor1 + minThickness1
-                        thickness2 = (edgeAngle - minAngle) * thicknessAngleFactor2 + minThickness2
+                        thickness = (edgeAngle - minAngle) * thicknessAngleFactor + minThickness
                     else:
-                        thickness1 = baseThickness1
-                        thickness2 = baseThickness2
+                        thickness = baseThickness
 
                     # size pass
                     if islandSize < averageIslandSizeDiv:
-                        thickness1 = thickness1 * (islandSize / averageIslandSizeDiv)
-                        thickness2 = thickness2 * (islandSize / averageIslandSizeDiv)
+                        thickness = thickness * (islandSize / averageIslandSizeDiv)
 
-                    lines1.append(thickness1)
-                    lines1.append(baseBlur1)
-                    lines2.append(thickness2)
-                    lines2.append(baseBlur2)
+                    lines.append(thickness)
+                    lines.append(baseBlur)
                     count+=1
-            lines1[arrIdx] = count
-            lines2[arrIdx] = count
-        return lines1, lines2
+            lines[arrIdx] = count
+        return lines
 
     def getOrderedIslandSizes(self, triangulatedUvs):
         x = 0
@@ -1174,7 +1145,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         return islands, islandMap
 
 
-    def processObject(self, obj, tex, thickness1, blur1, multiplier1, thickness2, blur2, multiplier2, minAngle, maxAngle, minTaper):
+    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper):
         # the following are converted into arrays of structs in C
         # lineData: array of floats [num_lines, mask_idx, [start, end, thickness, blur...]...] ends when start has a value of -infinity
         # triangulatedUVData: ordered list of float indices as follows [num_triangles, <triangulated UV data>...] ends when num_triangles has a value of -infinity
@@ -1184,13 +1155,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
             return
 
-        obj[EDGE_HIGHLIGHT_DILATE_A] = thickness1
-        obj[EDGE_HIGHLIGHT_BLUR_A] = blur1
-        obj[EDGE_HIGHLIGHT_MULTIPLIER_A] = multiplier1
-
-        obj[EDGE_HIGHLIGHT_DILATE_B] = thickness2
-        obj[EDGE_HIGHLIGHT_BLUR_B] = blur2
-        obj[EDGE_HIGHLIGHT_MULTIPLIER_B] = multiplier2
+        obj[EDGE_HIGHLIGHT_DILATE] = thickness
+        obj[EDGE_HIGHLIGHT_BLUR] = blur
+        obj[EDGE_HIGHLIGHT_MULTIPLIER] = multiplier
 
         islands, islandMap = self.getIslandMap(obj)
         edgeMap = self.getEdgeToAngle(obj)
@@ -1205,10 +1172,13 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         islandSizes = self.getOrderedIslandSizes(triangulatedUvs)
 
-        lines1, lines2 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness1, blur1, thickness2, blur2)
+        lines1 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness, blur)
+        lines2 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness/3, blur*4)
+        lines3 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness/4, blur*12)
         lines1 = array('f',lines1)
         lines2 = array('f',lines2)
-        lines = array('Q',[lines1.buffer_info()[0], lines2.buffer_info()[0]])
+        lines3 = array('f',lines3)
+        lines = array('Q',[lines1.buffer_info()[0], lines2.buffer_info()[0], lines3.buffer_info()[0]])
         linePointer = lines.buffer_info()[0]
 
         dataLen = len(islands)
@@ -1225,7 +1195,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
             outData = array('f',[0.0] * imgDataSize)
         outPointer = outData.buffer_info()[0]
 
-        extraData = array('f',[multiplier1, multiplier2])
+        extraData = array('f',[multiplier,multiplier/2,multiplier/3])
         extraPointer = extraData.buffer_info()[0]
 
         textureLibrary.generateEdgeHighlights(  ctypes.cast(linePointer,ctypes.POINTER(ctypes.POINTER(ctypes.c_float))),
@@ -1517,22 +1487,6 @@ class UpdateLegacy(bpy.types.Operator):
                 supersample = obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
                 obj[TEX_SHOULD_SUPERSAMPLE] = supersample
                 del obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
-                success+=1
-            except:
-                pass
-
-            try:
-                dilate = obj["__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"]
-                obj[EDGE_HIGHLIGHT_DILATE_A] = dilate
-                del obj["__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"]
-                success+=1
-            except:
-                pass
-
-            try:
-                blur = obj["__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"]
-                obj[EDGE_HIGHLIGHT_BLUR_A] = blur
-                del obj["__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"]
                 success+=1
             except:
                 pass
