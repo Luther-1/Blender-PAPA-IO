@@ -359,7 +359,7 @@ def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBo
                 invalidVertices+=1
                 break
             
-            if weight < 1/255 or hiddenBones.get(name,True):
+            if weight <= 1/255 or hiddenBones.get(name,True):
                 continue
 
             boneWeightMap[x].append( (name, weight) )
@@ -414,6 +414,10 @@ def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBo
                 if(surrogateIndex>=32):
                     break
 
+    # fix bone weight map
+    for x in range(len(boneWeightMap)):
+        boneWeightMap[x].sort(key=lambda entry:entry[1], reverse=True) # sort by weight
+        
     return boneWeightMap, surrogateMap
 
 def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWeightMap, surrogateMap, papaSkeleton:PapaSkeleton, uvMap:dict, vertexData:dict, properties):
