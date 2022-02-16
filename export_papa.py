@@ -640,6 +640,18 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
             materials.append(mat)
     return materials
 
+def ensureMeshPropertiesValid(mesh, properties):
+    ensureMaterialsValid(mesh, properties)
+
+    invalid = 0
+    for x in mesh.matrix_world.decompose()[2]:
+        if(x <= 0):
+            invalid += 1
+    
+    if invalid != 0:
+        PapaExportNotifications.getInstance().addNotification("Mesh \""+mesh.name+"\" has one or more axis with negative scale.")
+        
+
 def ensureMaterialsValid(mesh, properties):
 
     if properties.isCSG():
@@ -841,7 +853,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     # set up data
     print("Preparing to export "+mesh.name+"...")
 
-    ensureMaterialsValid(mesh, properties)
+    ensureMeshPropertiesValid(mesh, properties)
 
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
     # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
