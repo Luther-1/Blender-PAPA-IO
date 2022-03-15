@@ -96,21 +96,30 @@ def load_papa(properties, context):
                 if(vBuffer.getNumVertices()==0):
                     continue
 
-                # apply UV and normals
+                # apply extra data
                 vertex = vBuffer.getVertex(0)
-                if(vertex.getTexcoord1()!=None):
+                if(vertex.getTexcoord1() != None):
                     uv = blenderMesh.data.uv_layers.new(name="UVMap")
                     uvLayer = uv.data
                     for i in range(iBuffer.getNumIndices()):
                         vertexUV = vBuffer.getVertex(iBuffer.getIndex(i)).getTexcoord1()
                         uvLayer[i].uv = vertexUV
                 
-                if(vertex.getTexcoord2()!=None):
+                if(vertex.getTexcoord2() != None):
                     uv = blenderMesh.data.uv_layers.new(name="Shadow Map")
                     uvLayer = uv.data
                     for i in range(iBuffer.getNumIndices()):
                         vertexUV = vBuffer.getVertex(iBuffer.getIndex(i)).getTexcoord2()
                         uvLayer[i].uv = vertexUV
+
+                if(vertex.getColour() != None):
+                    if(not blenderMesh.data.vertex_colors):
+                        blenderMesh.data.vertex_colors.new(name="PA")
+                    colour_layer = blenderMesh.data.vertex_colors["PA"]
+                    for poly in blenderMesh.data.polygons:
+                        for idx in poly.loop_indices:
+                            loop = blenderMesh.data.loops[idx]
+                            colour_layer.data[idx].color = vBuffer.getVertex(loop.vertex_index).getColour()
 
                 if(properties.isImportNormals() and vertex.getNormal()!=None):
                     normals = []
