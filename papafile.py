@@ -251,6 +251,7 @@ class PapaVertex:
 class PapaVertexBuffer(PapaComponent):
     formatMap = {
         0:"Position3",
+        5:"Position3Normal3TexCoord2",
 		6:"Position3Normal3Color4TexCoord2",
 		7:"Position3Normal3Color4TexCoord4",
 		8:"Position3Weights4bBones4bNormal3TexCoord2",
@@ -285,6 +286,16 @@ class PapaVertexBuffer(PapaComponent):
             for i in range(numberOfVertices):
                 loc = self.getVertex(i).getPosition()
                 struct.pack_into('<fff', data, 12 * i,loc[0],loc[1],loc[2])
+
+        elif (vertexFormat == 5): # Position3Normal3TexCoord2
+            for i in range(numberOfVertices):
+                v = self.getVertex(i)
+
+                p = v.getPosition()
+                n = v.getNormal()
+                t1 = v.getTexcoord1()
+
+                struct.pack_into('<ffffffff', data, 32 * i,p[0],p[1],p[2],n[0],n[1],n[2],t1[0],t1[1])
 
         elif (vertexFormat == 6): # Position3Normal3Color4TexCoord2
             for i in range(numberOfVertices):
@@ -345,6 +356,8 @@ class PapaVertexBuffer(PapaComponent):
         vertexFormat = self.getFormat()
         if (vertexFormat == 0): # Position3
             return 12 * self.getNumVertices()
+        elif (vertexFormat == 5): # Position3Normal3TexCoord2
+            return 32 * self.getNumVertices()
         elif (vertexFormat == 6): # Position3Normal3Color4TexCoord2
             return 36 * self.getNumVertices()
         elif (vertexFormat == 7): # Position3Normal3Color4TexCoord4
@@ -1314,6 +1327,16 @@ class PapaFile:
                     p = Vector([currentVertex[0],currentVertex[1],currentVertex[2]])
 
                     vertices.append(PapaVertex(p))
+            
+            elif (vertexFormat == 5): # Position3Normal3TexCoord2
+                for _ in range(numberOfVertices):
+                    currentVertex = struct.unpack('<ffffffff', file.read(32))
+
+                    p = Vector([currentVertex[0],currentVertex[1],currentVertex[2]])
+                    n = Vector([currentVertex[3],currentVertex[4],currentVertex[5]])
+                    t1 = [currentVertex[6],currentVertex[7]]
+
+                    vertices.append(PapaVertex(p, norm=n, texcoord1=t1))
 
             elif (vertexFormat == 6): # Position3Normal3Color4TexCoord2
                 for _ in range(numberOfVertices):

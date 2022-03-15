@@ -490,6 +490,12 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                 texCoord1 = uvMap[0][poly.index][idx]
                 texCoord2 = uvMap[1][poly.index][idx]
                 v = PapaVertex(pos=loc,norm=normal,binorm=binormal,tan=tangent,texcoord1=texCoord1,texcoord2=texCoord2)
+            elif not papaSkeleton:
+                loc = Vector(vertices[idx].co)
+                normal = vertexData[0][poly.index][idx]
+                texCoord1 = uvMap[0][poly.index][idx]
+                texCoord2 = None # required for buckets
+                v = PapaVertex(pos=loc, norm=normal, texcoord1=texCoord1)
             else:
                 loc = Vector(vertices[idx].co)
                 weightList = [0] * 4
@@ -528,7 +534,12 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
             if not bucket.get(idx,False):
                 bucket[idx] = []
             bucket[idx].append( (vertexIndex, texCoord1, texCoord2, vectorToImmutableMapping(normal)) )
-    vertexFormat = 10 if properties.isCSG() else 8
+    if properties.isCSG():
+        vertexFormat = 10
+    elif not papaSkeleton:
+        vertexFormat = 5
+    else:
+        vertexFormat = 8
     vBuffer = PapaVertexBuffer(vertexFormat,vertexList)
     print(vBuffer)
 
@@ -826,6 +837,7 @@ def computeVertexData(mesh, connectionMap, angleMap, properties):
                 nMap[idx] = normal.normalized()
             else:
                 nMap[idx] = Vector(vertices[idx].normal)
+
     if properties.isCSG():
         # calculate the tangents and bitangents
         
