@@ -318,7 +318,9 @@ def load_papa(properties, context):
         else:
             animTargetArmature = findFirstValidArmature(animation, properties)
             if(not animTargetArmature):
-                return "ERROR","Failed to find valid armature for animation " + properties.getFilename()
+                err = "Failed to find valid armature for animation " + properties.getFilename()
+                print("ERROR",err)
+                return "ERROR",err
             else:
                 print("Found target armature: "+animTargetArmature.name)
 
