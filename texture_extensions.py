@@ -308,7 +308,7 @@ def getOrCreateImage(imageName, size=-1):
 class SetupTextureInitial(bpy.types.Operator):
     """Copies a mesh and creates only the diffuse details of it"""
     bl_idname = "setup_diffuse.papa_utils"
-    bl_label = "Setup Texture Initial"
+    bl_label = "PAPA Setup Texture Initial"
     bl_options = {'UNDO'}
 
     size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
@@ -387,7 +387,7 @@ class SetupTextureInitial(bpy.types.Operator):
 class SetupTextureComplete(bpy.types.Operator):
     """Copies a mesh and creates several new objects for baking"""
     bl_idname = "setup_bake.papa_utils"
-    bl_label = "Setup Texture Complete"
+    bl_label = "PAPA Setup Texture Complete"
     bl_options = {'UNDO'}
 
     def findDiffuse(self, context):
@@ -766,7 +766,7 @@ class SetupTextureComplete(bpy.types.Operator):
 class BakeSelectedObjects(bpy.types.Operator):
     """Bakes all selected objects' textures."""
     bl_idname = "bake_objects.papa_utils"
-    bl_label = "Bake Objects"
+    bl_label = "PAPA Bake Objects"
     bl_options = {'REGISTER','UNDO'}
 
     def alterUvs(self, mesh, idx, move):
@@ -832,7 +832,7 @@ class BakeSelectedObjects(bpy.types.Operator):
 class DissolveTo(bpy.types.Operator):
     """Attempts to dissolve all vertices on the selected meshes that do not correspond to vertices on the active mesh"""
     bl_idname = "dissolve_to.papa_utils"
-    bl_label = "Dissolve To"
+    bl_label = "PAPA Dissolve To"
     bl_options = {'UNDO'}
 
     def execute(self, context):
@@ -897,7 +897,7 @@ class DissolveTo(bpy.types.Operator):
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
     bl_idname = "calculate_edges.papa_utils"
-    bl_label = "Calculate Edges"
+    bl_label = "PAPA Calculate Edges"
     bl_options = {'REGISTER','UNDO'}
     DEFAULT_ANGLE = radians(10)
 
@@ -953,7 +953,7 @@ class CalulateEdgeSharp(bpy.types.Operator):
 class TweakEdgeHighlights(bpy.types.Operator):
     """Draws the edge highlights to the specified texture"""
     bl_idname = "tweak_edges.papa_utils"
-    bl_label = "Tweak Edge Highlights"
+    bl_label = "PAPA Tweak Edge Highlights"
     bl_options = {'REGISTER','UNDO'}
 
     lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50,default=1)
@@ -1210,7 +1210,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
 class TweakDistanceField(bpy.types.Operator):
     """Draws the distance field of the specified object"""
     bl_idname = "tweak_distance.papa_utils"
-    bl_label = "Tweak Distance Field"
+    bl_label = "PAPA Tweak Distance Field"
     bl_options = {'REGISTER','UNDO'}
 
     texelInfo: FloatProperty(name="TEMP_texelinfo",description="The value for TEMP_texelinfo", min=-1, max=4096, default=-1)
@@ -1352,7 +1352,7 @@ class TweakDistanceField(bpy.types.Operator):
 class PackUndersideFaces(bpy.types.Operator):
     """Packs any UVs on faces that point down. Sensitive to hidden faces"""
     bl_idname = "pack_underside.papa_utils"
-    bl_label = "Pack Underside UVs"
+    bl_label = "PAPA Pack Underside UVs"
     bl_options = {'REGISTER','UNDO'}
 
     packingFactor: FloatProperty(name="Factor",description="How much to multiply underside UVs by", min=0, max=1, default=0.25)
@@ -1417,7 +1417,7 @@ class PackUndersideFaces(bpy.types.Operator):
 class SaveTextures(bpy.types.Operator):
     """Saves the textures of the specified object to the local directory"""
     bl_idname = "save_textures.papa_utils"
-    bl_label = "Save Images"
+    bl_label = "PAPA Save Images"
     bl_options = {'REGISTER','UNDO'}
     
     def execute(self, context):
@@ -1463,7 +1463,7 @@ class SaveTextures(bpy.types.Operator):
 class UpdateLegacy(bpy.types.Operator):
     """Updates properties of an object that were defined previously by the plugin"""
     bl_idname = "update_legacy.papa_utils"
-    bl_label = "Update Legacy Data"
+    bl_label = "PAPA Update Legacy Data"
     bl_options = {'REGISTER','UNDO'}
 
     meshName: StringProperty(name="Mesh Name",description="The mesh name to apply, leave blank to do nothing",default="")
