@@ -291,7 +291,6 @@ def createDistanceFieldMaterial(name:str, blenderImage):
     
     return mat
         
-
 def getOrCreateImage(imageName, size=-1):
     try:
         img = bpy.data.images[imageName]
@@ -304,6 +303,63 @@ def getOrCreateImage(imageName, size=-1):
         img = bpy.data.images.new(imageName, size, size,alpha=True)
         img.pack() # by packing the data, we can edit the colour space name
         return img
+
+def createFaceMapping(source, destination): # source polyIdx -> target polyIdx
+    sourceData = []
+    targetData = []
+    selectObject(source)
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    for poly in source.data.polygons:
+        dataVertices = []
+        for loopIdx in poly.loop_indices:
+            dataVertices.append(Vector(source.data.vertices[source.data.loops[loopIdx].vertex_index].co))
+        sourceData.append((Vector(poly.normal), dataVertices))
+
+    selectObject(destination)
+    bpy.ops.object.mode_set(mode='EDIT')
+    for poly in destination.data.polygons:
+        dataVertices = []
+        for loopIdx in poly.loop_indices:
+            dataVertices.append(Vector(destination.data.vertices[destination.data.loops[loopIdx].vertex_index].co))
+        targetData.append((Vector(poly.normal), dataVertices))
+
+    def distance(dataBlock1, dataBlock2, breakout, angleFactor=1/2):
+        dist = dataBlock1[0].angle(dataBlock2[0], 90) * angleFactor
+        same = 0
+        epsilon = 0.01
+        for v1 in dataBlock1[1]:
+            minDist = 99999999
+            for v2 in dataBlock2[1]:
+                minDist = min((v1 - v2).length_squared, minDist)
+
+            dist+=minDist
+            if minDist <= epsilon:
+                same+=1
+            if dist > breakout:
+                return 9999999, 0
+        
+        return dist, same
+    
+    mapping = []
+
+    for polyData1 in sourceData:
+        minDist = 9999999
+        bestMatch = -1
+        bestSame = -1
+        for x in range(len(targetData)):
+            polyData2 = targetData[x]
+            dist, same = distance(polyData1, polyData2, minDist)
+            # if a face shares more verticies, then it clearly should map back to that face even if dist is larger
+            if (dist < minDist and same >= bestSame) or same > bestSame:
+                minDist = dist
+                bestMatch = x
+                bestSame = same
+                if len(polyData1[1]) == same: # all are the same
+                    break
+        mapping.append(bestMatch)
+
+    return mapping
 
 class SetupTextureInitial(bpy.types.Operator):
     """Copies a mesh and creates only the diffuse details of it"""
@@ -893,6 +949,50 @@ class DissolveTo(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.dissolve_edges()
         return count
+        
+class AssignFrom(bpy.types.Operator):
+    """Attempts to assign material slots from one mesh to another"""
+    bl_idname = "assign_from.papa_utils"
+    bl_label = "PAPA Assign From"
+    bl_options = {'UNDO'}
+
+    def execute(self, context):
+        applyTo = None
+        materialSource = bpy.context.active_object
+        for x in bpy.context.selected_objects:
+            if x != materialSource:
+                applyTo = x
+
+        if not materialSource:
+            self.report({'ERROR'}, "No active object")
+            return {'CANCELLED'}
+
+        if len(bpy.context.selected_objects) != 2:
+            self.report({'ERROR'}, "Incorrect amount of objects given. Exactly two must be selected.")
+            return {'CANCELLED'}
+        
+        self.assign(createFaceMapping(applyTo, materialSource), applyTo, materialSource)
+
+        selectObject(applyTo)
+        self.report({'INFO'}, "Finished assigning material slots")
+        applyToSlots = len(applyTo.data.materials)
+        materialSourceSlots = len(materialSource.data.materials)
+        if applyToSlots != materialSourceSlots:
+            self.report({'WARNING'}, "Material slot count differs between objects ("+str(applyToSlots) + " != "+str(materialSourceSlots)+").")
+        return {'FINISHED'}
+    
+    def assign(self, mapping, applyTo, materialSource):
+        selectObject(materialSource)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        materialMapping = []
+        for poly in materialSource.data.polygons:
+            materialMapping.append(poly.material_index)
+
+        selectObject(applyTo)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        for x in range(len(mapping)):
+            poly = applyTo.data.polygons[x]
+            poly.material_index = materialMapping[mapping[x]]
 
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
@@ -1726,6 +1826,7 @@ _papa_texture_extension_classes = (
     PackUndersideFaces,
     CalulateEdgeSharp,
     DissolveTo,
+    AssignFrom,
     TweakEdgeHighlights,
     TweakDistanceField,
     BakeSelectedObjects,
