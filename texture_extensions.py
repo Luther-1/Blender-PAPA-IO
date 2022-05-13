@@ -1015,7 +1015,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
             if len(arr) != 2:
                 edgeMap[x] = pi
             else:
-                edgeMap[x] = arr[0].angle(arr[1])
+                edgeMap[x] = arr[0].angle(arr[1], pi)
         return edgeMap
 
     def getLines(self, mesh, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, baseThickness, baseBlur):
@@ -1688,6 +1688,7 @@ class TextureFunctions(bpy.types.Menu):
         PackUndersideFaces,
         CalulateEdgeSharp,
         DissolveTo,
+        AssignFrom,
         TweakEdgeHighlights,
         TweakDistanceField,
         BakeSelectedObjects,
