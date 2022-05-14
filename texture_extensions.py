@@ -25,7 +25,7 @@ import bpy
 from bpy_extras import mesh_utils;
 from mathutils import Vector
 from bpy.props import *
-from math import pi, radians, log2
+from math import pi, radians, log2, ceil, floor
 from array import array
 from os import path
 import ctypes
@@ -304,58 +304,146 @@ def getOrCreateImage(imageName, size=-1):
         img.pack() # by packing the data, we can edit the colour space name
         return img
 
-def createFaceMapping(source, destination): # source polyIdx -> target polyIdx
-    sourceData = []
-    targetData = []
-    selectObject(source)
-    bpy.ops.object.mode_set(mode='EDIT')
+def createFaceMapping(fromMesh, toMesh, hashFactor=50): # polyIdx -> polyIdx
+    fromData = []
+    toData = []
+    spatialHashmap = {}
 
-    for poly in source.data.polygons:
-        dataVertices = []
-        for loopIdx in poly.loop_indices:
-            dataVertices.append(Vector(source.data.vertices[source.data.loops[loopIdx].vertex_index].co))
-        sourceData.append((Vector(poly.normal), dataVertices))
+    selectObject(fromMesh)
 
-    selectObject(destination)
-    bpy.ops.object.mode_set(mode='EDIT')
-    for poly in destination.data.polygons:
-        dataVertices = []
-        for loopIdx in poly.loop_indices:
-            dataVertices.append(Vector(destination.data.vertices[destination.data.loops[loopIdx].vertex_index].co))
-        targetData.append((Vector(poly.normal), dataVertices))
+    # set up hashmap
+    for x in range(-1, hashFactor + 1):
+        for y in range(-1, hashFactor + 1):
+            for z in range(-1, hashFactor + 1):
+                spatialHashmap[(x,y,z)] = set()
 
-    def distance(dataBlock1, dataBlock2, breakout, angleFactor=1/2):
+    rangeX = toMesh.dimensions.x / hashFactor
+    rangeY = toMesh.dimensions.y / hashFactor
+    rangeZ = toMesh.dimensions.z / hashFactor
+
+    startX = 1<<32 - 1
+    startY = 1<<32 - 1
+    startZ = 1<<32 - 1
+
+    for vertex in toMesh.data.vertices:
+        startX = min(startX, vertex.co.x)
+        startY = min(startY, vertex.co.y)
+        startZ = min(startZ, vertex.co.z)
+    
+    def hashIndices(startX, startY, startZ, rangeX, rangeY, rangeZ, vertices, off=0):
+        maxX = vertices[0].x
+        maxY = vertices[0].y
+        maxZ = vertices[0].z
+        minX = maxX
+        minY = maxY
+        minZ = maxZ
+        for x in range(1, len(vertices)):
+            v = vertices[x]
+            maxX = max(maxX, v.x)
+            maxY = max(maxY, v.y)
+            maxZ = max(maxZ, v.z)
+            minX = min(minX, v.x)
+            minY = min(minY, v.y)
+            minZ = min(minZ, v.z)
+        
+        maxX = ceil(((maxX - startX) / rangeX) + off)
+        maxY = ceil(((maxY - startY) / rangeY) + off)
+        maxZ = ceil(((maxZ - startZ) / rangeZ) + off)
+        minX = floor(((minX - startX) / rangeX) - off)
+        minY = floor(((minY - startY) / rangeY) - off)
+        minZ = floor(((minZ - startZ) / rangeZ) - off)
+
+        indices = []
+        for x in range(minX, maxX):
+            for y in range(minY, maxY):
+                for z in range(minZ, maxZ):
+                    indices.append( (x,y,z) )
+
+        return indices
+    
+    def distance(dataBlock1, dataBlock2, angleFactor=1):
         dist = dataBlock1[0].angle(dataBlock2[0], 90) * angleFactor
-        same = 0
+        sameVertices = 0
         epsilon = 0.01
+        sameAxis = 0
         for v1 in dataBlock1[1]:
-            minDist = 99999999
-            for v2 in dataBlock2[1]:
-                minDist = min((v1 - v2).length_squared, minDist)
+            minDist = 1<<32 - 1
+            for x in range(len(dataBlock2[1])):
+                v = v1 - dataBlock2[1][x]
+                ls = v.length_squared
+                if ls < minDist:
+                    minDist = ls
+                    sameAxis = sum( [abs(x) < epsilon for x in v.xyz] )
 
             dist+=minDist
             if minDist <= epsilon:
-                same+=1
-            if dist > breakout:
-                return 9999999, 0
+                sameVertices+=1
         
-        return dist, same
-    
-    mapping = []
+        return dist, sameVertices, sameAxis
 
-    for polyData1 in sourceData:
-        minDist = 9999999
-        bestMatch = -1
-        bestSame = -1
-        for x in range(len(targetData)):
-            polyData2 = targetData[x]
-            dist, same = distance(polyData1, polyData2, minDist)
+    # setup fromMesh
+    fromVertices = fromMesh.data.vertices
+    fromLoops = fromMesh.data.loops
+
+    for poly in fromMesh.data.polygons:
+        dataVertices = []
+        for loopIdx in poly.loop_indices:
+            dataVertices.append(Vector(fromVertices[fromLoops[loopIdx].vertex_index].co))
+        fromData.append( (Vector(poly.normal), dataVertices) )
+
+
+    # setup toMesh
+    selectObject(toMesh)
+    toVertices = toMesh.data.vertices
+    toLoops = toMesh.data.loops
+
+    for poly in toMesh.data.polygons:
+        dataVertices = []
+        for loopIdx in poly.loop_indices:
+            dataVertices.append(Vector(toVertices[toLoops[loopIdx].vertex_index].co))
+
+        dataBlock = (Vector(poly.normal), dataVertices)
+
+        toData.append(dataBlock)
+
+        for index in hashIndices(startX, startY, startZ, rangeX, rangeY, rangeZ, dataVertices):
+            spatialHashmap[index].add(poly.index)
+    
+    # build the mapping
+
+    mapping = []
+    allIndices = list(range(len(toData)))
+
+    for fromPolyData in fromData:
+
+        candidateIndices = set()
+        candidateIndicesList = []
+        candidates = []
+        
+        for index in hashIndices(startX, startY, startZ, rangeX, rangeY, rangeZ, fromPolyData[1], 0.25):
+            candidateIndices = candidateIndices.union(spatialHashmap.get(index, set()))
+
+        for index in candidateIndices:
+            candidates.append(toData[index])
+            candidateIndicesList.append(index)
+        
+        if len(candidates) == 0:
+            candidates = toData
+            candidateIndicesList = allIndices
+
+        minDist, bestSame, bestAxis = distance(fromPolyData, candidates[0])
+        bestMatch = candidateIndicesList[0]
+        
+        for x in range(1, len(candidates)):
+            toPolyData = candidates[x]
+            dist, sameVertices, sameAxis = distance(fromPolyData, toPolyData)
             # if a face shares more verticies, then it clearly should map back to that face even if dist is larger
-            if (dist < minDist and same >= bestSame) or same > bestSame:
+            if (dist < minDist and sameVertices >= bestSame and sameAxis >= bestAxis) or sameVertices > bestSame:
                 minDist = dist
-                bestMatch = x
-                bestSame = same
-                if len(polyData1[1]) == same: # all are the same
+                bestMatch = candidateIndicesList[x]
+                bestSame = sameVertices
+                bestAxis = sameAxis
+                if len(fromPolyData[1]) == sameVertices: # all are the same
                     break
         mapping.append(bestMatch)
 
@@ -954,7 +1042,9 @@ class AssignFrom(bpy.types.Operator):
     """Attempts to assign material slots from one mesh to another"""
     bl_idname = "assign_from.papa_utils"
     bl_label = "PAPA Assign From"
-    bl_options = {'UNDO'}
+    bl_options = {'REGISTER','UNDO'}
+
+    hashFactor: IntProperty(name="Search Quadrants",description="The amount of zones to break the mesh up in to.", default=50, min=1, max=256)
 
     def execute(self, context):
         applyTo = None
@@ -971,14 +1061,16 @@ class AssignFrom(bpy.types.Operator):
             self.report({'ERROR'}, "Incorrect amount of objects given. Exactly two must be selected.")
             return {'CANCELLED'}
         
-        self.assign(createFaceMapping(applyTo, materialSource), applyTo, materialSource)
+        self.assign(createFaceMapping(applyTo, materialSource, self.hashFactor), applyTo, materialSource)
 
-        selectObject(applyTo)
-        self.report({'INFO'}, "Finished assigning material slots")
         applyToSlots = len(applyTo.data.materials)
         materialSourceSlots = len(materialSource.data.materials)
         if applyToSlots != materialSourceSlots:
             self.report({'WARNING'}, "Material slot count differs between objects ("+str(applyToSlots) + " != "+str(materialSourceSlots)+").")
+        else:
+            self.report({'INFO'}, "Finished assigning material slots")
+
+        selectObject(applyTo)
         return {'FINISHED'}
     
     def assign(self, mapping, applyTo, materialSource):
