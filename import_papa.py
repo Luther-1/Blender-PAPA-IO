@@ -864,7 +864,6 @@ def createMaterial(name: str, papaFile: PapaFile, material: PapaMaterial):
     col = material.getVectorParamByName(papaFile,"DiffuseColor")
     if(col):
         mat.diffuse_color = list(col.getVector().to_tuple())
-        mat.diffuse_color[3] = 1 - mat.diffuse_color[3] # opacity to alpha
         if(mat.diffuse_color[3] == 0):
             mat.diffuse_color[3] = 1
             print("Transparent colour for material \""+papaFile.getString(material.getShaderNameIndex())+"\", Ignoring.")
