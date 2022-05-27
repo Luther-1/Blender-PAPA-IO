@@ -1620,12 +1620,14 @@ class PapaFile:
                 rotations.append([])
             
             # load bone names
-            file.seek(boneTableOffset)
+            if boneTableOffset >= 0:
+                file.seek(boneTableOffset)
             currentSegment = struct.unpack('<' + 'H' * numBones, file.read(2 * numBones))
             for x in range(numBones):
                 boneNameIndexes.append(currentSegment[x])
             
-            file.seek(transformsOffset)
+            if transformsOffset >= 0:
+                file.seek(transformsOffset)
             for i in range(numFrames):
                 for k in range(numBones): # (frame1 --> bone1, bone2), (frame2 -->bone1, bone2) ...
                     currentSegment = struct.unpack('<fffffff', file.read(28))
