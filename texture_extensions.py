@@ -487,7 +487,22 @@ def setupMaterialsForObject(obj, texture):
     
     config = Configuration.getDataForObject(obj)
     createInfo = config["create"]
+
+    # if materials of the same name exist, re-assign them later
+    materialList = []
+    for _ in range(len(obj.data.materials)):
+        materialList.append([])
+
+    polygons = obj.data.polygons
+    for poly in polygons:
+        materialList[poly.material_index].append(poly.index)
+
+    materialMap = {}
+    for x in range(len(obj.data.materials)):
+        materialMap[obj.data.materials[x].name] = materialList[x]
+    
     obj.data.materials.clear()
+
     for matName in createInfo:
         matInfo = createInfo[matName]
         colour = None
@@ -500,14 +515,20 @@ def setupMaterialsForObject(obj, texture):
             
         obj.data.materials.append(createMaterial(matName, colour, texture, attach))
 
-    polygons = obj.data.polygons
-    materialDict = {mat.name: i for i, mat in enumerate(obj.data.materials)}
+    materialIndexMap = {mat.name: i for i, mat in enumerate(obj.data.materials)}
 
     assignInfo = config["assign"]
     if "default" in assignInfo:
-        index = materialDict[assignInfo["default"]]
+        index = materialIndexMap[assignInfo["default"]]
         for poly in polygons:
             poly.material_index = index
+
+    # assign previously existing material slots
+    for matIdx in range(len(obj.data.materials)):
+        matName = obj.data.materials[matIdx].name
+        if matName in materialMap:
+            for x in materialMap[matName]:
+                polygons[x].material_index = matIdx
 
     for objType in assignInfo:
         if objType == "default":
@@ -520,7 +541,7 @@ def setupMaterialsForObject(obj, texture):
         for x in range(len(polygons)):
             matName = relationInfo.get(sourceMaterials[sourcePolygons[x].material_index].name, None)
             if matName:
-                polygons[x].material_index = materialDict[matName]
+                polygons[x].material_index = materialIndexMap[matName]
 
 class CreateTextureTemplate(bpy.types.Operator):
     """Copies a mesh and creates a template for full texturing.
