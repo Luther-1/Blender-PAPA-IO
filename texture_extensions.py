@@ -544,11 +544,11 @@ def setupMaterialsForObject(obj, texture):
                 if matName:
                     polygons[x].material_index = materialIndexMap[matName]
 
-class CreateTextureTemplate(bpy.types.Operator):
+class SetupTextureTemplate(bpy.types.Operator):
     """Copies a mesh and creates a template for full texturing.
     This function does have some limitations which can be solved by using Setup Texture Initial instead"""
     bl_idname = "setup_template.papa_utils"
-    bl_label = "PAPA Create Texture Template"
+    bl_label = "PAPA Setup Texture Template"
     bl_options = {'UNDO'}
 
     size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
@@ -1934,7 +1934,7 @@ class TextureFunctions(bpy.types.Menu):
     bl_region_type = 'TOOLS'
 
     options = [
-        CreateTextureTemplate,
+        SetupTextureTemplate,
         SetupTextureFromTemplate,
         SetupTextureInitial,
         SetupTextureComplete,
@@ -1974,7 +1974,7 @@ if path.exists(libPath):
         print("TEXTURE LIBRARY MISSING ("+str(e)+")")
 
 _papa_texture_extension_classes = (
-    CreateTextureTemplate,
+    SetupTextureTemplate,
     SetupTextureFromTemplate,
     SetupTextureInitial,
     SetupTextureComplete,
