@@ -990,7 +990,6 @@ class BakeSelectedObjects(bpy.types.Operator):
     
     def execute(self, context):
         success = 0
-        objects = []
         for obj in bpy.context.selected_objects:
             try:
                 shouldBake = obj[TEX_SHOULD_BAKE]
@@ -1019,18 +1018,20 @@ class BakeSelectedObjects(bpy.types.Operator):
                 if shouldSupersample:
                     tex.scale(texSize[0],texSize[1])
 
-                if getObjectType(obj) == OBJ_TYPES.DIFFUSE: # add magic pixel TODO remove
-                    idx = texSize[0] * texSize[1] * 4 - 4
-                    tex.pixels[idx] = 1.0
-                    tex.pixels[idx + 1] = 0.0
-                    tex.pixels[idx + 2] = 1.0
-                    tex.pixels[idx + 3] = 1.0
-                elif getObjectType(obj) == OBJ_TYPES.AO:
-                    idx = texSize[0] * texSize[1] * 4 - 4
-                    tex.pixels[idx] = 1.0
-                    tex.pixels[idx + 1] = 1.0
-                    tex.pixels[idx + 2] = 1.0
-                    tex.pixels[idx + 3] = 1.0
+                config = Configuration.getDataForObject(obj)
+                if "bake" in config and "magic_pixel" in config["bake"]:
+                    bakeInfo = config["bake"]
+                    magicPixel = bakeInfo["magic_pixel"]
+                    magicPixelLoc = magicPixel["location"]
+                    magicPixelColour = magicPixel["color"]
+
+                    x = round(magicPixelLoc[0] * texSize[0] - 1)
+                    y = round(magicPixelLoc[1] * texSize[1] - 1)
+                    idx = (y * texSize[0] + x) * 4
+                    tex.pixels[idx] = magicPixelColour[0] / 255.0
+                    tex.pixels[idx + 1] = magicPixelColour[1] / 255.0
+                    tex.pixels[idx + 2] = magicPixelColour[2] / 255.0
+                    tex.pixels[idx + 3] = magicPixelColour[3] / 255.0
                 else:
                     tex.pixels[0] = tex.pixels[0] # force a reload, sometimes the texture won't update automatically after a bake
                 
