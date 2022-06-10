@@ -913,24 +913,16 @@ class SetupTextureComplete(bpy.types.Operator):
         tree = darkMat.node_tree
         bsdf = tree.nodes["Principled BSDF"]
 
-        col = tree.nodes.new("ShaderNodeMixRGB")
-        col.inputs["Fac"].default_value = 0
-        col.inputs["Color1"].default_value=bsdf.inputs["Base Color"].default_value
-
         mixRGB = tree.nodes.new("ShaderNodeMixRGB")
         mixRGB.blend_type = "SOFT_LIGHT"
-
-        colourRamp = tree.nodes.new("ShaderNodeValToRGB")
-        colourRamp.color_ramp.elements[1].color = lightCol
+        mixRGB.inputs["Color1"].default_value=bsdf.inputs["Base Color"].default_value
+        mixRGB.inputs["Color2"].default_value=lightCol
 
         edgeBake = tree.nodes.new("ShaderNodeTexImage")
         edgeBake.image = edgeHighlight[EDGE_HIGHLIGHT_TEXTURE]
         edgeBake.select=False
 
-        tree.links.new(mixRGB.inputs["Color1"], col.outputs["Color"])
-        tree.links.new(mixRGB.inputs["Color2"], colourRamp.outputs["Color"])
         tree.links.new(mixRGB.inputs["Fac"], edgeBake.outputs["Alpha"])
-        tree.links.new(colourRamp.inputs["Fac"], edgeBake.outputs["Color"])
         tree.links.new(bsdf.inputs["Base Color"], mixRGB.outputs["Color"])
 
     def setupMaterialBake(self, context):
