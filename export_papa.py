@@ -723,6 +723,7 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
     boneMap = {}
     hiddenBones = {}
     numRootBones = 0
+    _, _, scale = armature.matrix_local.decompose()
     for bone in armature.data.edit_bones:
         hiddenBones[bone.name] = False
         # ignore hidden bones. Mostly for IK animation
@@ -730,9 +731,9 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
             hiddenBones[bone.name] = True
             continue
 
-        mat = bone.matrix
+        mat = armature.matrix_local @ bone.matrix
         if editBoneParent(properties, bone):
-            loc, q, _ = (editBoneParent(properties, bone).matrix.inverted() @ mat).decompose()
+            loc, q, _ = ((armature.matrix_local @ editBoneParent(properties, bone).matrix).inverted() @ mat).decompose()
         else:
             loc, q, _ = mat.decompose()
             numRootBones+=1
@@ -741,6 +742,7 @@ def createSkeleton(papaFile: PapaFile, mesh, properties):
             if not isDefaultRotation(q):
                 PapaExportNotifications.getInstance().addNotification("Root bone ("+bone.name+") is not rotated -90 degrees on x axis from bind pose.")
         rot = Quaternion((q[1],q[2],q[3],q[0]))
+        loc *= scale
 
         
         papaBone = PapaBone(papaFile.addString(PapaString(bone.name)),-1,loc,rot,Matrix(),mat.inverted())
@@ -944,12 +946,13 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
         mesh.data.free_tangents()
 
 
-def processBone(poseBone, animation, properties):
+def processBone(armature, poseBone, animation, properties):
     # this is an inverted form of processBone in import_papa.
     # The code does all the operations in reverse to turn the blender formatted data back into PA formatted data
     animBone = animation.getAnimationBone(poseBone.name)
     bone = poseBone.bone
     parent = poseBoneParent(properties, poseBone)
+    _, _, scale = armature.matrix_local.decompose()
     
     if parent:
         parent = parent.bone
@@ -968,7 +971,8 @@ def processBone(poseBone, animation, properties):
                 matrix = commonMatrix @ locationCorrectionMatrix @ Matrix.Translation(l)
             else:
                 matrix = commonMatrix @ Matrix.Translation(l)
-            loc, _, _ = matrix.decompose()
+            loc, _, _ = (armature.matrix_local @ matrix).decompose()
+            loc *= scale
             animBone.setTranslation(x,loc)
 
             if not bone.use_inherit_rotation:
@@ -984,7 +988,7 @@ def processBone(poseBone, animation, properties):
             l = animBone.getTranslation(x)
             r = animBone.getRotation(x)
 
-            cl, cr, _ = (bone.matrix_local @ Matrix.Translation(l) @ r.to_matrix().to_4x4()).decompose()
+            cl, cr, _ = (armature.matrix_local @ bone.matrix_local @ Matrix.Translation(l) @ r.to_matrix().to_4x4()).decompose()
             cr = Quaternion((cr[1],cr[2],cr[3],cr[0]))
 
             animBone.setTranslation(x,cl)
@@ -1039,14 +1043,6 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
         animationBones.append(b)
         animationBoneMap[bone] = b
 
-    # apply the transformation
-    bpy.ops.object.mode_set(mode='OBJECT')
-    oldMatrix = armature.matrix_world.to_4x4()
-    invMatrix = armature.matrix_world.inverted().to_4x4()
-    _, _, scale = armature.matrix_world.decompose()
-    bpy.ops.object.transform_apply()
-
-
     # load the transformations
     bpy.ops.object.mode_set(mode='POSE')
     for frame in range(numFrames):
@@ -1059,13 +1055,12 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
             parent = poseBoneParent(properties,bone)
 
             if properties.isIgnoreRoot() and not parent:
-                matrix = armature.convert_space(pose_bone=bone, matrix=bone.bone.matrix_local, from_space='POSE',to_space='LOCAL')
+                matrix = armature.convert_space(pose_bone=bone, matrix=armature.matrix_local @ bone.bone.matrix_local, from_space='POSE',to_space='LOCAL')
             else:    
                 # convert the matrix back into local space for compilation
                 matrix = armature.convert_space(pose_bone=bone, matrix=bone.matrix, from_space='POSE',to_space='LOCAL')
             
             loc, rot, _ = matrix.decompose()
-            loc *= scale
 
             if not bone.bone.use_inherit_rotation:
                 _,cr,_ = parent.matrix.inverted().decompose()
@@ -1109,13 +1104,7 @@ def writeAnimation(armature, properties, papaFile: PapaFile):
     # correct the transformations from blender data into PA data
     for bone in armature.pose.bones:
         if animation.getAnimationBone(bone.name) != None:
-            processBone(bone, animation, properties)
-
-    # undo the applied transformation
-    bpy.ops.object.mode_set(mode='OBJECT')
-    armature.matrix_world = invMatrix
-    bpy.ops.object.transform_apply()
-    armature.matrix_world = oldMatrix
+            processBone(armature, bone, animation, properties)
 
     # put the header back
     bpy.context.scene.frame_current = savedStartFrame
