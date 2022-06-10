@@ -55,7 +55,7 @@ class Configuration:
 
     @classmethod
     def getDataForObject(cls, obj):
-        name = obj[OBJ_NAME_STRING].lower()
+        name = obj[OBJ_TYPE_STRING].lower()
         return cls.get(name)
 
     @classmethod
@@ -470,6 +470,57 @@ def createFaceMapping(fromMesh, toMesh, hashFactor=50): # polyIdx -> polyIdx
 
     return mapping
 
+def findObject(name, _type):
+    for obj in bpy.data.objects:
+        if not OBJ_NAME_STRING in obj or not OBJ_TYPE_STRING in obj:
+            continue
+
+        if obj[OBJ_NAME_STRING] == name and obj[OBJ_TYPE_STRING] == _type:
+            return obj 
+    return None
+
+
+def setupMaterialsForObject(obj, texture):
+    if not OBJ_NAME_STRING in obj:
+        return
+    
+    config = Configuration.getDataForObject(obj)
+    createInfo = config["create"]
+    obj.data.materials.clear()
+    for matName in createInfo:
+        matInfo = createInfo[matName]
+        colour = None
+        attach = False
+        if type(matInfo) == list:
+            colour = matInfo
+        else:
+            colour = matInfo["color"]
+            attach = matInfo["attach"]
+            
+        obj.data.materials.append(createMaterial(matName, colour, texture, attach))
+
+    polygons = obj.data.polygons
+    materialDict = {mat.name: i for i, mat in enumerate(obj.data.materials)}
+
+    assignInfo = config["assign"]
+    if "default" in assignInfo:
+        index = materialDict[assignInfo["default"]]
+        for poly in polygons:
+            poly.material_index = index
+
+    for objType in assignInfo:
+        if objType == "default":
+            continue
+        relationInfo = assignInfo[objType]
+        sourceObject = findObject(obj[OBJ_NAME_STRING], objType.upper())
+        sourcePolygons = sourceObject.data.polygons
+        sourceMaterials = sourceObject.data.materials
+
+        for x in range(len(polygons)):
+            matName = relationInfo.get(sourceMaterials[sourcePolygons[x].material_index].name, None)
+            if matName:
+                polygons[x].material_index = materialDict[matName]
+
 class SetupTemplateFrom(bpy.types.Operator):
     """Copies a mesh and creates a template for full texturing.
     This function does have some limitations which can be solved by using Setup Texture Initial instead"""
@@ -488,6 +539,7 @@ class SetupTemplateFrom(bpy.types.Operator):
         texSize = int(self.size)
         obj[TEX_SIZE_INT] = texSize
         obj[OBJ_NAME_STRING] = obj.name.lower()
+        obj[OBJ_TYPE_STRING] = OBJ_TYPES.TEMPLATE
         self.setupObject(obj)
         
         return {'FINISHED'}
@@ -503,21 +555,7 @@ class SetupTemplateFrom(bpy.types.Operator):
         if abs(loc[0]) > epsilon or abs(loc[1]) > epsilon or abs(loc[2]) > epsilon:
             self.report({'ERROR'},obj.name +" has a location transform. Use of non applied transformations is discouraged.")
 
-        
-        matData = obj.data.materials
-        matData.clear()
-        colourNameTuples = (
-            ("primary",(0xC2,0x43,0x46)),
-            ("secondary",(0xBB,0xA9,0x66)),
-            ("light_grey",(0xA7,0xA7,0xA7)),
-            ("medium_grey",(0x5D,0x5D,0x5D)),
-            ("dark_grey",(0x42,0x42,0x42)),
-            ("lights",(0xff,0xff,0xff)),
-            ("fab",(0x49,0xE7,0x51)),
-        )
-
-        for value in colourNameTuples:
-            matData.append(createMaterial(value[0],value[1],None))
+        setupMaterialsForObject(obj, None)
 
         areas = bpy.context.workspace.screens[0].areas
         for area in areas:
