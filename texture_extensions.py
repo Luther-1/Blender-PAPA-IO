@@ -20,6 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import json
+import pathlib
 import bpy
 from bpy_extras import mesh_utils;
 from mathutils import Vector
@@ -42,6 +44,25 @@ EDGE_HIGHLIGHT_MULTIPLIER = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
+
+class Configuration:
+    data = {}
+
+    @classmethod
+    def setup(cls):
+        file = open(pathlib.Path(__file__).parent.resolve().joinpath("texture_config.json"), "r")
+        cls.data = json.load(file)
+
+    @classmethod
+    def getDataForObject(cls, obj):
+        name = obj[OBJ_NAME_STRING].lower()
+        return cls.get(name)
+
+    @classmethod
+    def get(cls, name):
+        return cls.data[name]
+
+Configuration.setup()
 
 class OBJ_TYPES:
     TEMPLATE = "TEMPLATE"

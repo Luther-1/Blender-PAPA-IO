@@ -1,0 +1,203 @@
+{
+  "template": {
+    "create": {
+      "primary": [
+        194,
+        67,
+        70
+      ],
+      "secondary": [
+        187,
+        169,
+        102
+      ],
+      "light_grey": [
+        167,
+        167,
+        167
+      ],
+      "medium_grey": [
+        93,
+        93,
+        93
+      ],
+      "dark_grey": [
+        66,
+        66,
+        66
+      ],
+      "lights": [
+        255,
+        255,
+        255
+      ],
+      "red_lights": [
+        255,
+        0,
+        0
+      ],
+      "fab": [
+        73,
+        231,
+        81
+      ]
+    },
+    "assign": {
+      "default": "light_grey"
+    }
+  },
+  "diffuse": {
+    "create": {
+      "light_grey": [
+        167,
+        167,
+        167
+      ],
+      "medium_grey": [
+        93,
+        93,
+        93
+      ],
+      "dark_grey": [
+        66,
+        66,
+        66
+      ],
+      "lights": [
+        255,
+        255,
+        255
+      ],
+      "red_lights": [
+        255,
+        0,
+        0
+      ],
+      "fab": [
+        73,
+        231,
+        81
+      ]
+    },
+    "assign": {
+      "default": "light_grey",
+      "template": {
+        "light_grey": "light_grey",
+        "medium_grey": "medium_grey",
+        "dark_grey": "dark_grey",
+        "primary": "light_grey",
+        "secondary": "light_grey",
+        "lights": "lights",
+        "red_lights": "red_lights",
+        "fab": "fab"
+      }
+    }
+  },
+  "material": {
+    "create": {
+      "light_material": [
+        247,
+        207,
+        247
+      ],
+      "dark_material": [
+        199,
+        195,
+        247
+      ],
+      "glow_material": [
+        0,
+        0,
+        247
+      ],
+      "no_specular_material": [
+        0,
+        195,
+        247
+      ]
+    },
+    "assign": {
+      "default": "light_material",
+      "template": {
+        "primary": "light_material",
+        "secondary": "light_material",
+        "light_grey": "light_material",
+        "medium_grey": "dark_material",
+        "dark_grey": "dark_material",
+        "lights": "glow_material",
+        "red_lights": "glow_material"
+      },
+      "diffuse": {
+        "light_grey": "light_material",
+        "medium_grey": "dark_material",
+        "dark_grey": "dark_material",
+        "lights": "glow_material",
+        "red_lights": "glow_material"
+      }
+    }
+  },
+  "mask": {
+    "create": {
+      "primary": [
+        255,
+        0,
+        0
+      ],
+      "secondary": [
+        0,
+        255,
+        0
+      ],
+      "glow_mask": [
+        0,
+        0,
+        255
+      ],
+      "glow_primary_mask": [
+        255,
+        0,
+        255
+      ],
+      "black_mask": [
+        0,
+        0,
+        0
+      ]
+    },
+    "assign": {
+      "default": "black_mask",
+      "template": {
+        "primary": "primary",
+        "secondary": "primary"
+      }
+    }
+  },
+  "ao": {
+    "create": {
+      "ao_bake_ignore": {
+        "color": [
+          255,
+          255,
+          255
+        ],
+        "attach": false
+      },
+      "ao_bake": [
+        255,
+        255,
+        255
+      ]
+    },
+    "assign": {
+      "default": "ao_bake",
+      "template": {
+        "lights": "ao_bake_ignore",
+        "red_lights": "ao_bake_ignore"
+      },
+      "diffuse": {
+        "lights": "ao_bake_ignore",
+        "red_lights": "ao_bake_ignore"
+      }
+    }
+  }
+}
