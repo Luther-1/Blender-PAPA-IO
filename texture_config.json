@@ -48,48 +48,48 @@
   },
   "diffuse": {
     "create": {
-      "light_grey": [
+      "light_grey_diffuse": [
         167,
         167,
         167
       ],
-      "medium_grey": [
+      "medium_grey_diffuse": [
         93,
         93,
         93
       ],
-      "dark_grey": [
+      "dark_grey_diffuse": [
         66,
         66,
         66
       ],
-      "lights": [
+      "lights_diffuse": [
         255,
         255,
         255
       ],
-      "red_lights": [
+      "red_lights_diffuse": [
         255,
         0,
         0
       ],
-      "fab": [
+      "fab_diffuse": [
         73,
         231,
         81
       ]
     },
     "assign": {
-      "default": "light_grey",
+      "default": "light_grey_diffuse",
       "template": {
-        "light_grey": "light_grey",
-        "medium_grey": "medium_grey",
-        "dark_grey": "dark_grey",
-        "primary": "light_grey",
-        "secondary": "light_grey",
-        "lights": "lights",
-        "red_lights": "red_lights",
-        "fab": "fab"
+        "light_grey": "light_grey_diffuse",
+        "medium_grey": "medium_grey_diffuse",
+        "dark_grey": "dark_grey_diffuse",
+        "primary": "light_grey_diffuse",
+        "secondary": "light_grey_diffuse",
+        "lights": "lights_diffuse",
+        "red_lights": "red_lights_diffuse",
+        "fab": "fab_diffuse"
       }
     }
   },
@@ -138,12 +138,12 @@
   },
   "mask": {
     "create": {
-      "primary": [
+      "primary_mask": [
         255,
         0,
         0
       ],
-      "secondary": [
+      "secondary_mask": [
         0,
         255,
         0
@@ -167,26 +167,26 @@
     "assign": {
       "default": "black_mask",
       "template": {
-        "primary": "primary",
-        "secondary": "primary"
+        "primary": "primary_mask",
+        "secondary": "secondary_mask"
       }
     }
   },
   "ao": {
     "create": {
-      "ao_bake_ignore": {
+      "ao_bake_ignore": [
+        255,
+        255,
+        255
+      ],
+      "ao_bake": {
         "color": [
           255,
           255,
           255
         ],
-        "attach": false
-      },
-      "ao_bake": [
-        255,
-        255,
-        255
-      ]
+        "attach": true
+      }
     },
     "assign": {
       "default": "ao_bake",
@@ -199,5 +199,9 @@
         "red_lights": "ao_bake_ignore"
       }
     }
+  },
+  "edge_highlight": {
+    "light_material": "light_material",
+    "dark_material": "dark_material"
   }
 }

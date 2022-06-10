@@ -494,8 +494,9 @@ def setupMaterialsForObject(obj, texture):
         materialList.append([])
 
     polygons = obj.data.polygons
-    for poly in polygons:
-        materialList[poly.material_index].append(poly.index)
+    if len(materialList) > 0:
+        for poly in polygons:
+            materialList[poly.material_index].append(poly.index)
 
     materialMap = {}
     for x in range(len(obj.data.materials)):
@@ -512,7 +513,6 @@ def setupMaterialsForObject(obj, texture):
         else:
             colour = matInfo["color"]
             attach = matInfo["attach"]
-            
         obj.data.materials.append(createMaterial(matName, colour, texture, attach))
 
     materialIndexMap = {mat.name: i for i, mat in enumerate(obj.data.materials)}
@@ -538,10 +538,11 @@ def setupMaterialsForObject(obj, texture):
         sourcePolygons = sourceObject.data.polygons
         sourceMaterials = sourceObject.data.materials
 
-        for x in range(len(polygons)):
-            matName = relationInfo.get(sourceMaterials[sourcePolygons[x].material_index].name, None)
-            if matName:
-                polygons[x].material_index = materialIndexMap[matName]
+        if len(sourceMaterials) > 0:
+            for x in range(len(polygons)):
+                matName = relationInfo.get(sourceMaterials[sourcePolygons[x].material_index].name, None)
+                if matName:
+                    polygons[x].material_index = materialIndexMap[matName]
 
 class CreateTextureTemplate(bpy.types.Operator):
     """Copies a mesh and creates a template for full texturing.
@@ -666,7 +667,6 @@ class SetupTextureInitial(bpy.types.Operator):
         texname = obj[OBJ_NAME_STRING]+"_diffuse_bake"
         diffuseTex = getOrCreateImage(obj[OBJ_NAME_STRING]+"_diffuse_bake",texSize)
         diffuse = duplicateObject(obj, OBJ_TYPES.DIFFUSE.lower())
-        diffuse.data.materials.clear()
         diffuse.location[0]+=diffuse.dimensions.x * 2
         diffuse[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         diffuse[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
@@ -676,25 +676,11 @@ class SetupTextureInitial(bpy.types.Operator):
         diffuse[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         bpy.context.collection.objects.link(diffuse)
 
-        matData = diffuse.data.materials
-        colourNameTuples = (
-            ("dark_diffuse",(0x1d,0x27,0x28)),
-            ("medium_diffuse",(0x4e,0x4e,0x4e)),
-            ("light_alt_diffuse",(0x6b,0x6b,0x6b)),
-            ("light_diffuse",(0x7d,0x7d,0x7d)),
-            ("green_glow_diffuse",(0x60,0xf0,0x00)),
-            ("red_glow_diffuse",(0xff,0x00,0x00)),
-            ("engine_glow_diffuse",(0xe3,0xad,0x00)),
-            ("black_diffuse",(0x00,0x00,0x00)),
-            ("white_glow_diffuse",(0xff,0xff,0xff)),
-            ("socket_diffuse",(0x07,0x07,0x0b)),
-        )
-        for value in colourNameTuples:
-            matData.append(createMaterial(value[0],value[1],diffuseTex))
+        setupMaterialsForObject(diffuse, diffuseTex)
         
         if self.extras:
-            matData.append(createHazardStripesMaterial("hazard_stripe",(0xf0,0xb8,0x00),(0x00,0x00,0x00),diffuseTex))
-            matData.append(createHazardStripesMaterial("hazard_stripe_inverted",(0xf0,0xb8,0x00),(0x00,0x00,0x00),diffuseTex,invert=True))
+            diffuse.data.materials.append(createHazardStripesMaterial("hazard_stripe",(0xf0,0xb8,0x00),(0x00,0x00,0x00),diffuseTex))
+            diffuse.data.materials.append(createHazardStripesMaterial("hazard_stripe_inverted",(0xf0,0xb8,0x00),(0x00,0x00,0x00),diffuseTex,invert=True))
 
         areas = bpy.context.workspace.screens[0].areas
         for area in areas:
@@ -720,74 +706,11 @@ class SetupTextureComplete(bpy.types.Operator):
         self.report({'ERROR'},"Selected object must have been previously set up using Setup Texture Initial")
         return False
 
-    def getMaterialMap(self, mesh):
-        polygons = mesh.data.polygons
-        materialMap = {}
-        materialMap['dark']=[]
-        materialMap['light']=[]
-        materialMap['glow']=[]
-        materialMap['vent']=[]
-        materialMap['default']=[]
-
-        for x in range(len(polygons)):
-            face = polygons[x]
-            idx = face.material_index
-            matName = mesh.data.materials[idx].name
-            if matName=="dark_diffuse" or matName=="medium_diffuse" or matName=="socket_diffuse":
-                materialMap['dark'].append(x)
-            elif matName=="black_diffuse":
-                materialMap['vent'].append(x)
-            elif matName=="light_diffuse" or matName=="light_alt_diffuse" or matName=="hazard_stripe" or matName == "hazard_stripe_inverted":
-                materialMap['light'].append(x)
-            elif matName=="red_glow_diffuse" or matName=="engine_glow_diffuse" or matName=="white_glow_diffuse" or matName=="green_glow_diffuse":
-                materialMap['glow'].append(x)
-            else:
-                materialMap['default'].append(x)
-        return materialMap
-    
-    def assignFacesMaterial(self, materialMap, mesh, dark, light, vent, glow):
-        polygons = mesh.data.polygons
-        materialDict = {mat.name: i for i, mat in enumerate(mesh.data.materials)}
-        darkIdx = materialDict[dark]
-        lightIdx = materialDict[light]
-        ventIdx = materialDict[vent]
-        glowIdx = materialDict[glow]
-
-        for faceIdx in materialMap["dark"]:
-            polygons[faceIdx].material_index = darkIdx
-        for faceIdx in materialMap["light"]:
-            polygons[faceIdx].material_index = lightIdx
-        for faceIdx in materialMap["glow"]:
-            polygons[faceIdx].material_index = glowIdx
-        for faceIdx in materialMap["vent"]:
-            polygons[faceIdx].material_index = ventIdx
-        for faceIdx in materialMap["default"]:
-            polygons[faceIdx].material_index = ventIdx
-    
-    def assignFacesMask(self, materialMap, mesh, glow):
-        polygons = mesh.data.polygons
-        materialDict = {mat.name: i for i, mat in enumerate(mesh.data.materials)}
-        glowIdx = materialDict[glow]
-
-        for faceIdx in materialMap["glow"]:
-            polygons[faceIdx].material_index = glowIdx
-
-    def assignFacesAO(self, materialMap, mesh, glow):
-        polygons = mesh.data.polygons
-        materialDict = {mat.name: i for i, mat in enumerate(mesh.data.materials)}
-        glowIdx = materialDict[glow]
-
-        for faceIdx in materialMap["glow"]:
-            polygons[faceIdx].material_index = glowIdx
-
     def setupObjectBake(self, obj, texSize, name):
-        materialMap = self.getMaterialMap(obj)
-
         # create the material object
         texname = name+"_material_bake"
         materialTex = getOrCreateImage(texname,texSize)
         material = duplicateObject(obj, OBJ_TYPES.MATERIAL.lower())
-        material.data.materials.clear()
         material.location[0]+=material.dimensions.x * 2
         material[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         material[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
@@ -798,26 +721,12 @@ class SetupTextureComplete(bpy.types.Operator):
         self.__builtObjects.append(material)
         bpy.context.collection.objects.link(material)
 
-        matData = material.data.materials
-        colourNameTuples = (
-            ("dark_material",(0xc0,0xc0,0xff)),
-            ("light_material",(0xf0,0xcc,0xff)),
-            ("glow_material",(0x00,0x00,0xff)),
-            ("vent_material",(0x00,0xc5,0xff)),
-            ("tread_material",(0x28,0xc5,0xff)),
-            ("shiny_material",(0x00,0xff,0x00)),
-            ("shiny_lesser_material",(0x08,0xB9,0x00)),
-        )
-        for value in colourNameTuples:
-            matData.append(createMaterial(value[0],value[1],materialTex))
-        
-        self.assignFacesMaterial(materialMap, material, "dark_material", "light_material", "vent_material", "glow_material")
+        setupMaterialsForObject(material, materialTex)
 
         # create the mask object
         texname = name+"_mask_bake"
         maskTex = getOrCreateImage(texname,texSize)
         mask = duplicateObject(obj, OBJ_TYPES.MASK.lower())
-        mask.data.materials.clear()
         mask.location[0]+=mask.dimensions.x * 4
         mask[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         mask[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
@@ -828,29 +737,12 @@ class SetupTextureComplete(bpy.types.Operator):
         self.__builtObjects.append(mask)
         bpy.context.collection.objects.link(mask)
 
-        matData = mask.data.materials
-        colourNameTuples = (
-            ("primary",(0xff,0x00,0x00)),
-            ("secondary",(0x00,0xff,0x00)),
-            ("glow_mask",(0x00,0x00,0xff)),
-            ("glow_primary_mask",(0xff,0x00,0xff)),
-            ("black_mask",(0x00,0x00,0x00)),
-        )
-        for value in colourNameTuples:
-            matData.append(createMaterial(value[0],value[1],maskTex))
-
-        lastIdx = len(mask.data.materials) - 1
-        polygons = mask.data.polygons
-        for poly in polygons:
-            poly.material_index = lastIdx
-
-        self.assignFacesMask(materialMap, mask, "glow_mask")
+        setupMaterialsForObject(mask, maskTex)
     
         # create the AO object
         texname = name+"_ao_bake"
         aoTex = getOrCreateImage(texname,texSize)
         ao = duplicateObject(obj, OBJ_TYPES.AO.lower())
-        ao.data.materials.clear()
         ao.location[0]+=ao.dimensions.x * 6
         ao[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         ao[OBJ_TYPE_STRING] = OBJ_TYPES.AO
@@ -863,11 +755,7 @@ class SetupTextureComplete(bpy.types.Operator):
             ao.location[0]+= ao.dimensions.x
         bpy.context.collection.objects.link(ao)
 
-        matData = ao.data.materials
-        matData.append(createMaterial("ao_bake",(0xff,0xff,0xff),aoTex,attach=True))
-        matData.append(createMaterial("ao_bake_ignore",(0xff,0xff,0xff),aoTex,attach=False))
-
-        self.assignFacesAO(materialMap,ao,"ao_bake_ignore")
+        setupMaterialsForObject(ao, aoTex)
 
     def setupBake(self, context):
         diffuse = None
@@ -1006,13 +894,14 @@ class SetupTextureComplete(bpy.types.Operator):
     def setupObjectMaterialBake(self, materialObj, edgeHighlight):
         darkMat = None
         lightMat = None
+        config = Configuration.getDataForObject(edgeHighlight)
         for slot in materialObj.material_slots:
             if not slot.material:
                 continue
             mat = slot.material
-            if mat.name == "dark_material":
+            if mat.name == config["dark_material"]:
                 darkMat = mat
-            if mat.name == "light_material":
+            if mat.name == config["light_material"]:
                 lightMat = mat
             
         if not darkMat or not lightMat:
