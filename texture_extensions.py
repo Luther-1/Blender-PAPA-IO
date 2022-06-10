@@ -44,6 +44,7 @@ DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
 
 class OBJ_TYPES:
+    TEMPLATE = "TEMPLATE"
     DIFFUSE = "DIFFUSE"
     MATERIAL = "MATERIAL"
     MASK = "MASK"
@@ -448,6 +449,68 @@ def createFaceMapping(fromMesh, toMesh, hashFactor=50): # polyIdx -> polyIdx
 
     return mapping
 
+class SetupTemplateFrom(bpy.types.Operator):
+    """Copies a mesh and creates a template for full texturing.
+    This function does have some limitations which can be solved by using Setup Texture Initial instead"""
+    bl_idname = "setup_template.papa_utils"
+    bl_label = "PAPA Setup Template From"
+    bl_options = {'UNDO'}
+
+    size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
+
+    def execute(self, context):
+        obj = bpy.context.active_object
+        if not obj:
+            self.report({'ERROR'},"No Object given")
+            return {'CANCELLED'}
+
+        texSize = int(self.size)
+        obj[TEX_SIZE_INT] = texSize
+        obj[OBJ_NAME_STRING] = obj.name.lower()
+        self.setupObject(obj)
+        
+        return {'FINISHED'}
+
+    def setupObject(self, obj):
+        loc, rot, sca = obj.matrix_world.decompose()
+
+        epsilon = 0.0001
+        if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
+            self.report({'ERROR'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
+        if abs(rot[0]-1) > epsilon or abs(rot[1]) > epsilon or abs(rot[2]) > epsilon or abs(rot[3]) > epsilon:
+            self.report({'ERROR'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
+        if abs(loc[0]) > epsilon or abs(loc[1]) > epsilon or abs(loc[2]) > epsilon:
+            self.report({'ERROR'},obj.name +" has a location transform. Use of non applied transformations is discouraged.")
+
+        
+        matData = obj.data.materials
+        matData.clear()
+        colourNameTuples = (
+            ("primary",(0xC2,0x43,0x46)),
+            ("secondary",(0xBB,0xA9,0x66)),
+            ("light_grey",(0xA7,0xA7,0xA7)),
+            ("medium_grey",(0x5D,0x5D,0x5D)),
+            ("dark_grey",(0x42,0x42,0x42)),
+            ("lights",(0xff,0xff,0xff)),
+            ("fab",(0x49,0xE7,0x51)),
+        )
+
+        for value in colourNameTuples:
+            matData.append(createMaterial(value[0],value[1],None))
+
+        areas = bpy.context.workspace.screens[0].areas
+        for area in areas:
+            for space in area.spaces:
+                if space.type == "VIEW_3D":
+                    space.shading.type = "MATERIAL"
+
+        bpy.context.scene.render.engine = 'CYCLES'
+        
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+
 class SetupTextureInitial(bpy.types.Operator):
     """Copies a mesh and creates only the diffuse details of it"""
     bl_idname = "setup_diffuse.papa_utils"
@@ -459,9 +522,6 @@ class SetupTextureInitial(bpy.types.Operator):
     
     def execute(self, context):
         obj = bpy.context.active_object
-        if not obj:
-            self.report({'ERROR'},"No Object given")
-            return {'CANCELLED'}
 
         texSize = int(self.size)
         obj[TEX_SIZE_INT] = texSize
@@ -472,6 +532,17 @@ class SetupTextureInitial(bpy.types.Operator):
     
     def invoke(self, context, event):
         wm = context.window_manager
+
+        obj = bpy.context.active_object
+        if not obj:
+            self.report({'ERROR'},"No Object given")
+            return {'CANCELLED'}
+        
+        try:
+            self.size = obj[TEX_SIZE_INT]
+        except:
+            pass
+
         return wm.invoke_props_dialog(self)
 
     def setupObject(self, obj, texSize):
@@ -1874,6 +1945,7 @@ class TextureFunctions(bpy.types.Menu):
     bl_region_type = 'TOOLS'
 
     options = [
+        SetupTemplateFrom,
         SetupTextureInitial,
         SetupTextureComplete,
         PackUndersideFaces,
@@ -1912,6 +1984,7 @@ if path.exists(libPath):
         print("TEXTURE LIBRARY MISSING ("+str(e)+")")
 
 _papa_texture_extension_classes = (
+    SetupTemplateFrom,
     SetupTextureInitial,
     SetupTextureComplete,
     PackUndersideFaces,
