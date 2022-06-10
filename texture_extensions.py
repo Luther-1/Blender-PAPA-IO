@@ -20,6 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+from doctest import FAIL_FAST
 import json
 import pathlib
 import bpy
@@ -570,10 +571,10 @@ class CreateTextureTemplate(bpy.types.Operator):
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 
-class SetupTextureInitial(bpy.types.Operator):
-    """Copies a mesh and creates only the diffuse details of it"""
-    bl_idname = "setup_diffuse.papa_utils"
-    bl_label = "PAPA Setup Texture Initial"
+class SetupTextureFromTemplate(bpy.types.Operator):
+    """Invokes Setup Texture Initial and then Setup Texture Complete"""
+    bl_idname = "setup_fromtemplate.papa_utils"
+    bl_label = "PAPA Setup Texture From Template"
     bl_options = {'UNDO'}
 
     size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
@@ -581,8 +582,34 @@ class SetupTextureInitial(bpy.types.Operator):
     
     def execute(self, context):
         obj = bpy.context.active_object
+        if getObjectType(obj) != OBJ_TYPES.TEMPLATE:
+            self.report({'ERROR'},"Selected object must have been previously set up using Create Texture Template")
+            return {'CANCELLED'}
 
-        texSize = int(self.size)
+        bpy.ops.setup_diffuse.papa_utils("EXEC_DEFAULT", size=obj[TEX_SIZE_INT], extras=False)
+        obj = findObject(obj[OBJ_NAME_STRING], OBJ_TYPES.DIFFUSE)
+        selectObject(obj)
+        bpy.ops.setup_bake.papa_utils("EXEC_DEFAULT")
+
+        return {'FINISHED'}
+
+    def setupObject(self, obj, texSize):
+        pass
+        
+
+class SetupTextureInitial(bpy.types.Operator):
+    """Copies a mesh and creates only the diffuse details of it"""
+    bl_idname = "setup_diffuse.papa_utils"
+    bl_label = "PAPA Setup Texture Initial"
+    bl_options = {'UNDO'}
+
+    size: IntProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default=512)
+    extras: BoolProperty(name="Add Extra Shaders",description="Adds extra shaders to the mesh",default=False)
+    
+    def execute(self, context):
+        obj = bpy.context.active_object
+
+        texSize = self.size
         obj[TEX_SIZE_INT] = texSize
         obj[OBJ_NAME_STRING] = obj.name.lower()
         self.setupObject(obj, texSize)
@@ -2005,6 +2032,7 @@ class TextureFunctions(bpy.types.Menu):
 
     options = [
         CreateTextureTemplate,
+        SetupTextureFromTemplate,
         SetupTextureInitial,
         SetupTextureComplete,
         PackUndersideFaces,
@@ -2044,6 +2072,7 @@ if path.exists(libPath):
 
 _papa_texture_extension_classes = (
     CreateTextureTemplate,
+    SetupTextureFromTemplate,
     SetupTextureInitial,
     SetupTextureComplete,
     PackUndersideFaces,
