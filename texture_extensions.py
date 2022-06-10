@@ -21,7 +21,6 @@
 # SOFTWARE.
 
 import json
-import pathlib
 import bpy
 from bpy_extras import mesh_utils;
 from mathutils import Vector
@@ -50,7 +49,7 @@ class Configuration:
 
     @classmethod
     def setup(cls):
-        file = open(pathlib.Path(__file__).parent.resolve().joinpath("texture_config.json"), "r")
+        file = open(path.dirname(path.abspath(__file__)) + path.sep + "texture_config.json", "r")
         cls.data = json.load(file)
 
     @classmethod
@@ -550,7 +549,7 @@ class SetupTextureTemplate(bpy.types.Operator):
     bl_label = "PAPA Setup Texture Template"
     bl_options = {'UNDO'}
 
-    size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
+    size: IntProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default=512)
 
     def execute(self, context):
         obj = bpy.context.active_object
@@ -558,7 +557,7 @@ class SetupTextureTemplate(bpy.types.Operator):
             self.report({'ERROR'},"No Object given")
             return {'CANCELLED'}
 
-        texSize = int(self.size)
+        texSize = self.size
         obj[TEX_SIZE_INT] = texSize
         obj[OBJ_NAME_STRING] = obj.name.lower()
         obj[OBJ_TYPE_STRING] = OBJ_TYPES.TEMPLATE
