@@ -101,10 +101,10 @@ void decodeTexture( unsigned char* data, int width, int height, int format, floa
             for (int x = 0; x<width; x++) {
                 int i = (x + (heightZero - y) * width) * 4;
                 int i2 = (x + y * width) * 4;
-                dst[i] = (float)data[i]/255.0;
-                dst[i+1] = (float)data[i+1]/255.0;
-                dst[i+2] = (float)data[i+2]/255.0;
-                dst[i+3] = (float)data[i+3]/255.0;
+                dst[i] = (float)data[i2]/255.0;
+                dst[i+1] = (float)data[i2+1]/255.0;
+                dst[i+2] = (float)data[i2+2]/255.0;
+                dst[i+3] = (float)data[i2+3]/255.0;
             }
         }
     } else if(format == 2) { // RGBX8888
@@ -115,7 +115,7 @@ void decodeTexture( unsigned char* data, int width, int height, int format, floa
                 dst[i] = (float)data[i2] / 255.0;
                 dst[i+1] = (float)data[i2+1] / 255.0;
                 dst[i+2] = (float)data[i2+2] / 255.0;
-                dst[i+3] = (float)data[i2+3] / 255.0;
+                dst[i+3] = 1.0f;
             }
         }
     } else if(format == 3) { // BGRA8888
@@ -123,9 +123,9 @@ void decodeTexture( unsigned char* data, int width, int height, int format, floa
             for (int x = 0; x<width; x++) {
                 int i = (x + (heightZero - y) * width) * 4;
                 int i2 = (x + y * width) * 4;
-                dst[i]=(float)data[i2]/255.0;
+                dst[i]=(float)data[i2+2]/255.0;
                 dst[i+1]=(float)data[i2+1]/255.0;
-                dst[i+2]=(float)data[i2+2]/255.0;
+                dst[i+2]=(float)data[i2+0]/255.0;
                 dst[i+3]=(float)data[i2+3]/255.0;
                 int t = dst[i];
                 dst[i] = dst[i2+2];
