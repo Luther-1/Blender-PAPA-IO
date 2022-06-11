@@ -1026,6 +1026,9 @@ class BakeSelectedObjects(bpy.types.Operator):
                 else:
                     tex.pixels[0] = tex.pixels[0] # force a reload, sometimes the texture won't update automatically after a bake
                 
+                # pack the updated image
+                tex.pack()
+                
                 success+=1
 
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
