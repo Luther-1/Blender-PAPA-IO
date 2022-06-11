@@ -1,6 +1,5 @@
 .vscode/*
 *.pyc
-*.cmd
 *.dll
 *.so
 *.dylib
