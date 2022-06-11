@@ -1070,6 +1070,15 @@ class UpdateDiffuseComposite(bpy.types.Operator):
         if not textureLibrary:
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
             return
+
+        dSize = diffuseTex.size
+        aSize = aoTex.size
+        eSize = edgeHighlightTex.size
+        fSize = distanceFieldTex.size
+        if dSize[0] != aSize[0] or dSize[0] != eSize[0] or dSize[0] != fSize[0] or dSize[1] != aSize[1] or dSize[1] != eSize[1] or dSize[1] != fSize[1]:
+            self.report({'ERROR'}, "Texture sizes do not match.")
+            return
+
         
         imgWidth = diffuseTex.size[0]
         imgHeight = diffuseTex.size[1]
