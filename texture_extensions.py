@@ -36,7 +36,7 @@ OBJ_TYPE_STRING = "__PAPA_IO_MESH_TYPE"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
 TEX_SHOULD_SUPERSAMPLE = "__PAPA_IO_TEXTURE_SUPERSAMPLE"
-DIFFUSE_TEX_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
+DIFFUSE_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
@@ -1091,7 +1091,7 @@ class UpdateDiffuseComposite(bpy.types.Operator):
         distanceFieldPointer = distanceFieldTex.buffer_info()[0]
 
         outTexName = name + "_composite"
-        diffuse[DIFFUSE_TEX_COMPOSITE_TEXTURE] = getOrCreateImage(outTexName, imgWidth)
+        diffuse[DIFFUSE_COMPOSITE_TEXTURE] = getOrCreateImage(outTexName, imgWidth)
 
         textureLibrary.compositeFinal(
                                         ctypes.cast(diffusePointer,ctypes.POINTER(ctypes.c_float)),
@@ -1102,7 +1102,7 @@ class UpdateDiffuseComposite(bpy.types.Operator):
                                         ctypes.c_int(imgWidth), ctypes.c_int(imgHeight))
                                                 
 
-        diffuse[DIFFUSE_TEX_COMPOSITE_TEXTURE].pixels = outData
+        diffuse[DIFFUSE_COMPOSITE_TEXTURE].pixels = outData
 
 
 
@@ -1739,10 +1739,10 @@ class PackUndersideFaces(bpy.types.Operator):
         return numPacked
 
 
-class SaveTextures(bpy.types.Operator):
+class SaveRawTextures(bpy.types.Operator):
     """Saves the textures of the specified object to the local directory"""
-    bl_idname = "save_textures.papa_utils"
-    bl_label = "PAPA Save Images"
+    bl_idname = "save_rawtextures.papa_utils"
+    bl_label = "PAPA Save Raw Images"
     bl_options = {'REGISTER','UNDO'}
     
     def execute(self, context):
@@ -1784,6 +1784,67 @@ class SaveTextures(bpy.types.Operator):
         area.type = prevType
         
         return {'FINISHED'}
+
+class SaveTextures(bpy.types.Operator):
+    """Generates and then saves the needed textures for a PA model to the specified directory"""
+    bl_idname = "save_textures.papa_utils"
+    bl_label = "PAPA Save Images"
+    bl_options = {'REGISTER','UNDO'}
+
+    directory: StringProperty(subtype="DIR_PATH")
+    forceName: StringProperty(name= "Rename", description="Name to prepend the textures with. If omitted, the model PAPA IO name will be used",default="",maxlen=1024)
+    
+    def execute(self, context):
+        names = []
+        for obj in bpy.context.selected_objects:
+            try:
+                name = obj[OBJ_NAME_STRING]
+                if not name in names:
+                    names.append(name)
+            except:
+                pass
+        if len(names)==0:
+            self.report({'ERROR'},"No Object groups given")
+            return {'CANCELLED'}
+
+
+        area = bpy.context.workspace.screens[0].areas[0]
+        prevType = area.type
+        area.type = "IMAGE_EDITOR"
+        prevImage = area.spaces[0].image
+
+        for name in names:
+            diffuse = findObject(name, OBJ_TYPES.DIFFUSE)
+            material = findObject(name, OBJ_TYPES.MATERIAL)
+            mask = findObject(name, OBJ_TYPES.MASK)
+
+            selectObject(diffuse)
+            bpy.ops.composite_update.papa_utils("EXEC_DEFAULT")
+
+            diffuseTex = diffuse[DIFFUSE_COMPOSITE_TEXTURE]
+            materialTex = getOrCreateImage(material[TEX_NAME_STRING])
+            maskTex = getOrCreateImage(mask[TEX_NAME_STRING])
+
+            n = name
+            if self.forceName:
+                n = self.forceName
+
+            data = [(diffuseTex, "_diffuse"),(materialTex, "_material"),(maskTex, "_mask")]
+
+            for pair in data:
+                area.spaces[0].image = pair[0]
+                bpy.ops.image.save_as({'area': area},'INVOKE_DEFAULT', copy=True, filepath = self.directory+"/"+n+pair[1]+".png")
+
+        area.spaces[0].image = prevImage
+        area.type = prevType
+
+        self.report({'INFO'}, "Successfully saved model textures.")
+
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
 class UpdateLegacy(bpy.types.Operator):
     """Updates properties of an object that were defined previously by the plugin"""
@@ -2021,6 +2082,7 @@ class TextureFunctions(bpy.types.Menu):
         BakeSelectedObjects,
         UpdateDiffuseComposite,
         SaveTextures,
+        SaveRawTextures,
         UpdateLegacy,
     ]
 
@@ -2064,6 +2126,7 @@ _papa_texture_extension_classes = (
     TweakEdgeHighlights,
     TweakDistanceField,
     BakeSelectedObjects,
+    SaveRawTextures,
     SaveTextures,
     UpdateLegacy,
     UpdateDiffuseComposite,
