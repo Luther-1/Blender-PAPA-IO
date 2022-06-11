@@ -991,6 +991,20 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
     *retVal = (float) distSum / (float) distPixels * 4;
 }
 
+inline float toLinearRGB(float f) {
+    if (f <= 0.04045) {
+        return f / 12.92f;
+    }
+    return powf(((f + 0.055) / 1.055), 2.4f);
+}
+
+inline float tosRGB(float f) {
+    if(f <= 0.0031308) {
+        return f * 12.92f;
+    }
+    return 1.055f * powf(f, 1.0f / 2.4f) - 0.055f;
+}
+
 void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* distanceField, float* out, int width, int height) {
     
     int loops = width * height * 4;
@@ -1002,30 +1016,7 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
         temp[1] = diffuse[idx + 1]; 
         temp[2] = diffuse[idx + 2]; 
 
-        temp[3] = distanceField[idx]; // sample red, they're all the same
-        // convert from SRGB to linear. distance field func worlks in lienar space
-        if(temp[3] < 0) {
-            temp[3] = 0;
-        } else if (temp[3] < 0.04045) {
-            temp[3] = temp[3] / 12.92f;
-        } else {
-            temp[3] = powf(((temp[3] + 0.055) / 1.055), 2.4f);
-        }
-
-        // perform overlay
-        float er = edgeHighlight[idx + 0];
-        float eg = edgeHighlight[idx + 1];
-        float eb = edgeHighlight[idx + 2];
-        float ea = edgeHighlight[idx + 3];
-
-        if(temp[0] < 0.5) {temp2[0] = 2 * temp[0] * er;} else {temp2[0] = 1 - 2 * (1 - temp[0]) * (1 - er);}
-        if(temp[1] < 0.5) {temp2[1] = 2 * temp[1] * eg;} else {temp2[1] = 1 - 2 * (1 - temp[1]) * (1 - eg);}
-        if(temp[2] < 0.5) {temp2[2] = 2 * temp[2] * eb;} else {temp2[2] = 1 - 2 * (1 - temp[2]) * (1 - eb);}
-
-        temp[0] = temp2[0] * ea + temp[0] * (1 - ea);
-        temp[1] = temp2[1] * ea + temp[1] * (1 - ea);
-        temp[2] = temp2[2] * ea + temp[2] * (1 - ea);
-
+        temp[3] = toLinearRGB(distanceField[idx]); // sample red, they're all the same
         // perform multiply
         float ar = ao[idx + 0];
         float ag = ao[idx + 1];
@@ -1034,6 +1025,25 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
         temp[0] = temp[0] * ar;
         temp[1] = temp[1] * ag;
         temp[2] = temp[2] * ab;
+
+        // perform soft light
+        float er = edgeHighlight[idx + 0];
+        float eg = edgeHighlight[idx + 1];
+        float eb = edgeHighlight[idx + 2];
+        float ea = tosRGB(edgeHighlight[idx + 3] * 0.65f); // don't question it
+
+        if( ea > 0.5) {
+            ea = (powf(ea - 0.207106781187f,1.0/3.0) - 0.174) * 0.9; // also don't question this
+        }
+
+        temp2[0] = (1 - 2 * er) * powf(temp[0], 2.0f) + 2 * er * temp[0];
+        temp2[1] = (1 - 2 * eg) * powf(temp[1], 2.0f) + 2 * eg * temp[1];
+        temp2[2] = (1 - 2 * eb) * powf(temp[2], 2.0f) + 2 * eb * temp[2];
+
+        temp[0] = temp2[0] * ea + temp[0] * (1 - ea);
+        temp[1] = temp2[1] * ea + temp[1] * (1 - ea);
+        temp[2] = temp2[2] * ea + temp[2] * (1 - ea);
+
 
         // write back
 

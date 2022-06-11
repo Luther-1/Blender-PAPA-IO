@@ -1815,7 +1815,14 @@ class SaveTextures(bpy.types.Operator):
                     names.append(name)
             except:
                 pass
-        if len(names)==0:
+
+        if len(names) == 0: # find first object
+            for o in bpy.data.objects:
+                if(getObjectType(o) != ""):
+                    names.append(o[OBJ_NAME_STRING])
+                    break
+        
+        if len(names) == 0:
             self.report({'ERROR'},"No Object groups given")
             return {'CANCELLED'}
 
