@@ -36,6 +36,7 @@ OBJ_TYPE_STRING = "__PAPA_IO_MESH_TYPE"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
 TEX_SHOULD_SUPERSAMPLE = "__PAPA_IO_TEXTURE_SUPERSAMPLE"
+DIFFUSE_TEX_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
@@ -1030,6 +1031,81 @@ class BakeSelectedObjects(bpy.types.Operator):
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
         return {'FINISHED'}
 
+class UpdateDiffuseComposite(bpy.types.Operator):
+    """Updates the current diffuse composite, or creates one"""
+    bl_idname = "composite_update.papa_utils"
+    bl_label = "PAPA Update Diffuse Composite"
+
+    def execute(self, context):
+        obj = bpy.context.active_object
+
+        if not obj: # find first object
+            for o in bpy.data.objects:
+                if(getObjectType(o) != ""):
+                    obj = o
+                    break
+
+        if not obj:
+            self.report({'ERROR'}, "No possible object found")
+            return {'CANCELLED'}
+
+        self.processObject(obj)
+        return {'FINISHED'}
+
+    def processObject(self, obj):
+        name = obj[OBJ_NAME_STRING]
+        diffuse = findObject(name, OBJ_TYPES.DIFFUSE)
+        ao = findObject(name, OBJ_TYPES.AO)
+        edgeHighlight = findObject(name, OBJ_TYPES.EDGE_HIGHLIGHT)
+        distanceField = findObject(name, OBJ_TYPES.DISTANCE_FIELD)
+
+        diffuseTex = getOrCreateImage(diffuse[TEX_NAME_STRING])
+        aoTex = getOrCreateImage(ao[TEX_NAME_STRING])
+        edgeHighlightTex = getOrCreateImage(edgeHighlight[TEX_NAME_STRING])
+        distanceFieldTex = getOrCreateImage(distanceField[TEX_NAME_STRING])
+
+        if not textureLibrary:
+            self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
+            return
+        
+        imgWidth = diffuseTex.size[0]
+        imgHeight = diffuseTex.size[1]
+        imgSize = imgWidth * imgHeight
+        imgDataSize = imgSize * 4
+        if imgDataSize & (imgDataSize-1) == 0: # test if the number of values is a power of two
+            outData = array('f',[0.0])
+            for _ in range(int(log2(imgDataSize))):
+                outData.extend(outData)
+        else:
+            outData = array('f',[0.0] * imgDataSize)
+        outPointer = outData.buffer_info()[0]
+
+        diffuseTex = array('f', diffuseTex.pixels)
+        aoTex = array('f', aoTex.pixels)
+        edgeHighlightTex = array('f', edgeHighlightTex.pixels)
+        distanceFieldTex = array('f', distanceFieldTex.pixels)
+
+        diffusePointer = diffuseTex.buffer_info()[0]
+        aoPointer = aoTex.buffer_info()[0]
+        edgeHighlightPointer = edgeHighlightTex.buffer_info()[0]
+        distanceFieldPointer = distanceFieldTex.buffer_info()[0]
+
+        outTexName = name + "_composite"
+        diffuse[DIFFUSE_TEX_COMPOSITE_TEXTURE] = getOrCreateImage(outTexName, imgWidth)
+
+        textureLibrary.compositeFinal(
+                                        ctypes.cast(diffusePointer,ctypes.POINTER(ctypes.c_float)),
+                                        ctypes.cast(aoPointer,ctypes.POINTER(ctypes.c_float)),
+                                        ctypes.cast(edgeHighlightPointer,ctypes.POINTER(ctypes.c_float)),
+                                        ctypes.cast(distanceFieldPointer,ctypes.POINTER(ctypes.c_float)),
+                                        ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)),
+                                        ctypes.c_int(imgWidth), ctypes.c_int(imgHeight))
+                                                
+
+        diffuse[DIFFUSE_TEX_COMPOSITE_TEXTURE].pixels = outData
+
+
+
 class DissolveTo(bpy.types.Operator):
     """Attempts to dissolve all vertices on the selected meshes that do not correspond to vertices on the active mesh"""
     bl_idname = "dissolve_to.papa_utils"
@@ -1943,6 +2019,7 @@ class TextureFunctions(bpy.types.Menu):
         TweakEdgeHighlights,
         TweakDistanceField,
         BakeSelectedObjects,
+        UpdateDiffuseComposite,
         SaveTextures,
         UpdateLegacy,
     ]
@@ -1967,6 +2044,10 @@ if path.exists(libPath):
         textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int,
                 ctypes.c_int, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateDistanceField.resType = None
+
+        textureLibrary.compositeFinal.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),
+                ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.c_int, ctypes.c_int)
+        textureLibrary.compositeFinal.resType = None
         print("PAPA IO: Texture Library ETex.dll successfully loaded")
     except Exception as e:
         print("TEXTURE LIBRARY MISSING ("+str(e)+")")
@@ -1985,6 +2066,7 @@ _papa_texture_extension_classes = (
     BakeSelectedObjects,
     SaveTextures,
     UpdateLegacy,
+    UpdateDiffuseComposite,
     TextureFunctions,
 )
 

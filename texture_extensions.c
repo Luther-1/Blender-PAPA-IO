@@ -990,3 +990,56 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
 
     *retVal = (float) distSum / (float) distPixels * 4;
 }
+
+void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* distanceField, float* out, int width, int height) {
+    
+    int loops = width * height * 4;
+    #pragma omp parallel for
+    for(int idx = 0;idx < loops; idx+=4) {
+        float temp[4];
+        float temp2[3];
+        temp[0] = diffuse[idx + 0]; 
+        temp[1] = diffuse[idx + 1]; 
+        temp[2] = diffuse[idx + 2]; 
+
+        temp[3] = distanceField[idx]; // sample red, they're all the same
+        // convert from SRGB to linear. distance field func worlks in lienar space
+        if(temp[3] < 0) {
+            temp[3] = 0;
+        } else if (temp[3] < 0.04045) {
+            temp[3] = temp[3] / 12.92f;
+        } else {
+            temp[3] = powf(((temp[3] + 0.055) / 1.055), 2.4f);
+        }
+
+        // perform overlay
+        float er = edgeHighlight[idx + 0];
+        float eg = edgeHighlight[idx + 1];
+        float eb = edgeHighlight[idx + 2];
+        float ea = edgeHighlight[idx + 3];
+
+        if(temp[0] < 0.5) {temp2[0] = 2 * temp[0] * er;} else {temp2[0] = 1 - 2 * (1 - temp[0]) * (1 - er);}
+        if(temp[1] < 0.5) {temp2[1] = 2 * temp[1] * eg;} else {temp2[1] = 1 - 2 * (1 - temp[1]) * (1 - eg);}
+        if(temp[2] < 0.5) {temp2[2] = 2 * temp[2] * eb;} else {temp2[2] = 1 - 2 * (1 - temp[2]) * (1 - eb);}
+
+        temp[0] = temp2[0] * ea + temp[0] * (1 - ea);
+        temp[1] = temp2[1] * ea + temp[1] * (1 - ea);
+        temp[2] = temp2[2] * ea + temp[2] * (1 - ea);
+
+        // perform multiply
+        float ar = ao[idx + 0];
+        float ag = ao[idx + 1];
+        float ab = ao[idx + 2];
+
+        temp[0] = temp[0] * ar;
+        temp[1] = temp[1] * ag;
+        temp[2] = temp[2] * ab;
+
+        // write back
+
+        out[idx + 0] = temp[0];
+        out[idx + 1] = temp[1];
+        out[idx + 2] = temp[2];
+        out[idx + 3] = temp[3];
+    }
+}
