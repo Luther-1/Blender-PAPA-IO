@@ -1017,24 +1017,12 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
         temp[2] = diffuse[idx + 2]; 
 
         temp[3] = toLinearRGB(distanceField[idx]); // sample red, they're all the same
-        // perform multiply
-        float ar = ao[idx + 0];
-        float ag = ao[idx + 1];
-        float ab = ao[idx + 2];
-
-        temp[0] = temp[0] * ar;
-        temp[1] = temp[1] * ag;
-        temp[2] = temp[2] * ab;
 
         // perform soft light
         float er = edgeHighlight[idx + 0];
         float eg = edgeHighlight[idx + 1];
         float eb = edgeHighlight[idx + 2];
-        float ea = tosRGB(edgeHighlight[idx + 3] * 0.65f); // don't question it
-
-        if( ea > 0.5) {
-            ea = (powf(ea - 0.207106781187f,1.0/3.0) - 0.174) * 0.9; // also don't question this
-        }
+        float ea = edgeHighlight[idx + 3];
 
         temp2[0] = (1 - 2 * er) * powf(temp[0], 2.0f) + 2 * er * temp[0];
         temp2[1] = (1 - 2 * eg) * powf(temp[1], 2.0f) + 2 * eg * temp[1];
@@ -1044,6 +1032,14 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
         temp[1] = temp2[1] * ea + temp[1] * (1 - ea);
         temp[2] = temp2[2] * ea + temp[2] * (1 - ea);
 
+        // perform multiply
+        float ar = ao[idx + 0];
+        float ag = ao[idx + 1];
+        float ab = ao[idx + 2];
+
+        temp[0] = temp[0] * ar;
+        temp[1] = temp[1] * ag;
+        temp[2] = temp[2] * ab;
 
         // write back
 
