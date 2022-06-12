@@ -2,29 +2,29 @@
   "template": {
     "create": {
       "primary": [
-        194,
-        67,
-        70
+        0,
+        185,
+        255
       ],
       "secondary": [
-        187,
-        169,
-        102
+        255,
+        168,
+        0
       ],
       "light_grey": [
-        167,
-        167,
-        167
+        103,
+        103,
+        103
       ],
       "medium_grey": [
-        93,
-        93,
-        93
+        63,
+        63,
+        63
       ],
       "dark_grey": [
-        66,
-        66,
-        66
+        23,
+        19,
+        23
       ],
       "lights": [
         255,
@@ -49,19 +49,19 @@
   "diffuse": {
     "create": {
       "light_grey_diffuse": [
-        167,
-        167,
-        167
+        103,
+        103,
+        103
       ],
       "medium_grey_diffuse": [
-        93,
-        93,
-        93
+        63,
+        63,
+        63
       ],
       "dark_grey_diffuse": [
-        66,
-        66,
-        66
+        23,
+        19,
+        23
       ],
       "lights_diffuse": [
         255,
