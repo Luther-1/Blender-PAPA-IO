@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import json
+
 import bpy
 from bpy_extras import mesh_utils;
 from mathutils import Vector
@@ -1045,6 +1046,8 @@ class UpdateDiffuseComposite(bpy.types.Operator):
     bl_idname = "composite_update.papa_utils"
     bl_label = "PAPA Update Diffuse Composite"
 
+    multiplyCount: IntProperty(name="Multiply Count", description="How many times to apply the multiply filter for AO", default=1, max=16)
+
     def execute(self, context):
         obj = bpy.context.active_object
 
@@ -1117,11 +1120,16 @@ class UpdateDiffuseComposite(bpy.types.Operator):
                                         ctypes.cast(edgeHighlightPointer,ctypes.POINTER(ctypes.c_float)),
                                         ctypes.cast(distanceFieldPointer,ctypes.POINTER(ctypes.c_float)),
                                         ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)),
-                                        ctypes.c_int(imgWidth), ctypes.c_int(imgHeight))
+                                        ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_int(self.multiplyCount))
                                                 
 
         diffuse[DIFFUSE_COMPOSITE_TEXTURE].pixels = outData
+        diffuse[DIFFUSE_COMPOSITE_TEXTURE].pack()
 
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
 
 
 class DissolveTo(bpy.types.Operator):
@@ -1813,55 +1821,33 @@ class SaveTextures(bpy.types.Operator):
     bl_options = {'REGISTER','UNDO'}
 
     directory: StringProperty(subtype="DIR_PATH")
-    forceName: StringProperty(name= "Rename", description="Name to prepend the textures with. If omitted, the model PAPA IO name will be used",default="",maxlen=1024)
+    rename: StringProperty(name="Name", description="Name to prepend the textures with.",default="",maxlen=1024)
+    multiplyCount: IntProperty(name="Multiply Count", description="How many times to apply the multiply filter for AO", default=1, max=16, min=1)
     
     def execute(self, context):
-        names = []
-        for obj in bpy.context.selected_objects:
-            try:
-                name = obj[OBJ_NAME_STRING]
-                if not name in names:
-                    names.append(name)
-            except:
-                pass
-
-        if len(names) == 0: # find first object
-            for o in bpy.data.objects:
-                if(getObjectType(o) != ""):
-                    names.append(o[OBJ_NAME_STRING])
-                    break
-        
-        if len(names) == 0:
-            self.report({'ERROR'},"No Object groups given")
-            return {'CANCELLED'}
-
-
         area = bpy.context.workspace.screens[0].areas[0]
         prevType = area.type
         area.type = "IMAGE_EDITOR"
         prevImage = area.spaces[0].image
 
-        for name in names:
-            diffuse = findObject(name, OBJ_TYPES.DIFFUSE)
-            material = findObject(name, OBJ_TYPES.MATERIAL)
-            mask = findObject(name, OBJ_TYPES.MASK)
+        diffuse = findObject(self.objName, OBJ_TYPES.DIFFUSE)
+        material = findObject(self.objName, OBJ_TYPES.MATERIAL)
+        mask = findObject(self.objName, OBJ_TYPES.MASK)
 
-            selectObject(diffuse)
-            bpy.ops.composite_update.papa_utils("EXEC_DEFAULT")
+        selectObject(diffuse)
+        bpy.ops.composite_update.papa_utils("EXEC_DEFAULT", multiplyCount=self.multiplyCount)
 
-            diffuseTex = diffuse[DIFFUSE_COMPOSITE_TEXTURE]
-            materialTex = getOrCreateImage(material[TEX_NAME_STRING])
-            maskTex = getOrCreateImage(mask[TEX_NAME_STRING])
+        diffuseTex = diffuse[DIFFUSE_COMPOSITE_TEXTURE]
+        materialTex = getOrCreateImage(material[TEX_NAME_STRING])
+        maskTex = getOrCreateImage(mask[TEX_NAME_STRING])
 
-            n = name
-            if self.forceName:
-                n = self.forceName
+        n = self.rename
 
-            data = [(diffuseTex, "_diffuse"),(materialTex, "_material"),(maskTex, "_mask")]
+        data = [(diffuseTex, "_diffuse"),(materialTex, "_material"),(maskTex, "_mask")]
 
-            for pair in data:
-                area.spaces[0].image = pair[0]
-                bpy.ops.image.save_as({'area': area},'INVOKE_DEFAULT', copy=True, filepath = self.directory+"/"+n+pair[1]+".png")
+        for pair in data:
+            area.spaces[0].image = pair[0]
+            bpy.ops.image.save_as({'area': area},'INVOKE_DEFAULT', copy=True, filepath = self.directory+"/"+n+pair[1]+".png")
 
         area.spaces[0].image = prevImage
         area.type = prevType
@@ -1871,6 +1857,23 @@ class SaveTextures(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        self.objName = ""
+        for obj in bpy.context.selected_objects:
+            if OBJ_NAME_STRING in obj:
+                self.objName = obj[OBJ_NAME_STRING]
+                break
+
+        if self.objName == "": # find first object
+            for obj in bpy.data.objects:
+                if OBJ_NAME_STRING in obj:
+                    self.objName = obj[OBJ_NAME_STRING]
+                    break
+        
+        if self.objName == "":
+            self.report({'ERROR'},"No Object groups given")
+            return {'CANCELLED'}
+        
+        self.rename=self.objName
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -2136,7 +2139,7 @@ if path.exists(libPath):
         textureLibrary.generateDistanceField.resType = None
 
         textureLibrary.compositeFinal.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),
-                ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.c_int, ctypes.c_int)
+                ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.c_int, ctypes.c_int, ctypes.c_int)
         textureLibrary.compositeFinal.resType = None
         print("PAPA IO: Texture Library ETex.dll successfully loaded")
     except Exception as e:

@@ -1046,7 +1046,7 @@ inline float tosRGB(float f) {
     return 1.055f * powf(f, 1.0f / 2.4f) - 0.055f;
 }
 
-void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* distanceField, float* out, int width, int height) {
+void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* distanceField, float* out, int width, int height, int multiplyCount) {
     
     int loops = width * height * 4;
     #pragma omp parallel for
@@ -1078,9 +1078,9 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
         float ag = ao[idx + 1];
         float ab = ao[idx + 2];
 
-        temp[0] = temp[0] * ar;
-        temp[1] = temp[1] * ag;
-        temp[2] = temp[2] * ab;
+        temp[0] = temp[0] * powf(ar,multiplyCount);
+        temp[1] = temp[1] * powf(ag, multiplyCount);
+        temp[2] = temp[2] * powf(ab, multiplyCount);
 
         // write back
 
