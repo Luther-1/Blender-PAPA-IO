@@ -1549,6 +1549,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
                                                 ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
 
         tex.pixels = outData
+        tex.pack()
 
 class TweakDistanceField(bpy.types.Operator):
     """Draws the distance field of the specified object"""
@@ -1678,6 +1679,8 @@ class TweakDistanceField(bpy.types.Operator):
                     ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)), ctypes.byref(tInfo))
         
             tex.pixels = outData
+            tex.pack()
+
         
         # only update value when the user requests it to recalculate
         if self.texelInfo == -1:
