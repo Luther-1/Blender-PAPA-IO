@@ -44,6 +44,7 @@ EDGE_HIGHLIGHT_MULTIPLIER = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
+MATERIAL_IDENTIFIER = "__PAPA_IO_MATERIAL"
 
 class Configuration:
     data = {}
@@ -104,12 +105,17 @@ def srgbToLinearRGB(c):
     elif c < 0.04045: return c/12.92
     else:             return ((c+0.055)/1.055)**2.4
 
-def createMaterial(name: str, colour: tuple, blenderImage, attach=False):
+def createMaterial(name: str, colour: tuple, blenderImage, attach=False, returnExisting=True):
     try:
-        return bpy.data.materials[name]
+        mat = bpy.data.materials[name]
+        if MATERIAL_IDENTIFIER in mat and returnExisting:
+            return mat
     except:
         pass
+
     mat = bpy.data.materials.new(name=name)
+    mat.name = name # This bumps other materials with the same name out
+    mat[MATERIAL_IDENTIFIER] = True
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = tuple([srgbToLinearRGB(c/0xff) for c in colour] + [1])
