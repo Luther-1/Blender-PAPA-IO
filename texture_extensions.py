@@ -36,7 +36,6 @@ OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
 OBJ_TYPE_STRING = "__PAPA_IO_MESH_TYPE"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
-TEX_SHOULD_SUPERSAMPLE = "__PAPA_IO_TEXTURE_SUPERSAMPLE"
 DIFFUSE_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
@@ -678,7 +677,6 @@ class SetupTextureInitial(bpy.types.Operator):
         diffuse[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
         diffuse[TEX_NAME_STRING] = texname
         diffuse[TEX_SHOULD_BAKE] = True
-        diffuse[TEX_SHOULD_SUPERSAMPLE] = True
         diffuse[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         bpy.context.collection.objects.link(diffuse)
 
@@ -722,7 +720,6 @@ class SetupTextureComplete(bpy.types.Operator):
         material[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
         material[TEX_NAME_STRING] = texname
         material[TEX_SHOULD_BAKE] = True
-        material[TEX_SHOULD_SUPERSAMPLE] = True
         material[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(material)
         bpy.context.collection.objects.link(material)
@@ -738,7 +735,6 @@ class SetupTextureComplete(bpy.types.Operator):
         mask[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
         mask[TEX_NAME_STRING] = texname
         mask[TEX_SHOULD_BAKE] = True
-        mask[TEX_SHOULD_SUPERSAMPLE] = True
         mask[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(mask)
         bpy.context.collection.objects.link(mask)
@@ -754,7 +750,6 @@ class SetupTextureComplete(bpy.types.Operator):
         ao[OBJ_TYPE_STRING] = OBJ_TYPES.AO
         ao[TEX_NAME_STRING]=texname
         ao[TEX_SHOULD_BAKE] = True
-        ao[TEX_SHOULD_SUPERSAMPLE] = True
         ao[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(ao)
         if ao.dimensions.x < 10:
@@ -803,7 +798,6 @@ class SetupTextureComplete(bpy.types.Operator):
         edgeHighlight[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
         edgeHighlight[TEX_NAME_STRING] = edgeHighlightTex.name
         edgeHighlight[TEX_SHOULD_BAKE] = False
-        edgeHighlight[TEX_SHOULD_SUPERSAMPLE] = False
         edgeHighlight[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
         self.__builtObjects.append(edgeHighlight)
         matData = edgeHighlight.data.materials
@@ -859,7 +853,6 @@ class SetupTextureComplete(bpy.types.Operator):
         distanceField[DISTANCE_FIELD_TEXTURE] = distanceFieldTex
         distanceField[TEX_NAME_STRING] = distanceFieldTex.name
         distanceField[TEX_SHOULD_BAKE] = False
-        distanceField[TEX_SHOULD_SUPERSAMPLE] = False
         distanceField[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
         self.__builtObjects.append(distanceField)
         matData = distanceField.data.materials
@@ -991,8 +984,9 @@ class BakeSelectedObjects(bpy.types.Operator):
         for obj in bpy.context.selected_objects:
             try:
                 shouldBake = obj[TEX_SHOULD_BAKE]
-                shouldSupersample = obj[TEX_SHOULD_SUPERSAMPLE]
                 texSize = obj[TEX_SIZE_INT]
+                config = Configuration.getDataForObject(obj)
+                shouldSupersample = config["bake"]["supersample"]
             except:
                 continue
 
@@ -1005,18 +999,19 @@ class BakeSelectedObjects(bpy.types.Operator):
                 
                 selectObject(obj)
 
-                if getObjectType(obj) == OBJ_TYPES.AO:
+                if getObjectType(obj) == OBJ_TYPES.AO: 
                     bpy.ops.object.bake(type="AO",margin=128)
-                    self.alterUvs(obj,0,1)
+                    self.alterUvs(obj,0,1) # TODO make this not hard coded
+                    if shouldSupersample:
+                        tex.scale(texSize[0],texSize[1])
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
                     self.alterUvs(obj,0,-1)
                 else:
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=128)
+                    if shouldSupersample:
+                        tex.scale(texSize[0],texSize[1])
+                
 
-                if shouldSupersample:
-                    tex.scale(texSize[0],texSize[1])
-
-                config = Configuration.getDataForObject(obj)
                 if "bake" in config and "magic_pixel" in config["bake"]:
                     bakeInfo = config["bake"]
                     magicPixel = bakeInfo["magic_pixel"]
@@ -1898,11 +1893,9 @@ class UpdateLegacy(bpy.types.Operator):
 
         success = 0
 
-        # change old legacy names
+        # delete old legacy data
         for obj in objects:
             try:
-                supersample = obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
-                obj[TEX_SHOULD_SUPERSAMPLE] = supersample
                 del obj["PAPA_IO_TEXTURE_SUPERSAMPLE"]
                 success+=1
             except:
@@ -1968,9 +1961,6 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
-                if not TEX_SHOULD_SUPERSAMPLE in obj:
-                    obj[TEX_SHOULD_SUPERSAMPLE]=True
-                    success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
                     success+=1
@@ -2010,18 +2000,12 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
-                if not TEX_SHOULD_SUPERSAMPLE in obj:
-                    obj[TEX_SHOULD_SUPERSAMPLE]=True
-                    success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
                     success+=1
             if getObjectType(obj)==OBJ_TYPES.MASK:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
-                    success+=1
-                if not TEX_SHOULD_SUPERSAMPLE in obj:
-                    obj[TEX_SHOULD_SUPERSAMPLE]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
@@ -2030,18 +2014,12 @@ class UpdateLegacy(bpy.types.Operator):
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=True
                     success+=1
-                if not TEX_SHOULD_SUPERSAMPLE in obj:
-                    obj[TEX_SHOULD_SUPERSAMPLE]=False
-                    success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.AO
                     success+=1
             if getObjectType(obj)==OBJ_TYPES.DISTANCE_FIELD:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
-                    success+=1
-                if not TEX_SHOULD_SUPERSAMPLE in obj:
-                    obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.DISTANCE_FIELD
@@ -2054,9 +2032,6 @@ class UpdateLegacy(bpy.types.Operator):
             if getObjectType(obj)==OBJ_TYPES.EDGE_HIGHLIGHT:
                 if not TEX_SHOULD_BAKE in obj:
                     obj[TEX_SHOULD_BAKE]=False
-                    success+=1
-                if not TEX_SHOULD_SUPERSAMPLE in obj:
-                    obj[TEX_SHOULD_SUPERSAMPLE]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.EDGE_HIGHLIGHT

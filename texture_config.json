@@ -91,6 +91,9 @@
         "red_lights": "red_lights_diffuse",
         "fab": "fab_diffuse"
       }
+    },
+    "bake": {
+      "supersample": false
     }
   },
   "material": {
@@ -134,6 +137,9 @@
         "lights": "glow_material",
         "red_lights": "glow_material"
       }
+    },
+    "bake": {
+      "supersample": false
     }
   },
   "mask": {
@@ -170,6 +176,9 @@
         "primary": "primary_mask",
         "secondary": "secondary_mask"
       }
+    },
+    "bake": {
+      "supersample": false
     }
   },
   "ao": {
@@ -198,6 +207,9 @@
         "lights": "ao_bake_ignore",
         "red_lights": "ao_bake_ignore"
       }
+    },
+    "bake": {
+      "supersample": true
     }
   },
   "edge_highlight": {
