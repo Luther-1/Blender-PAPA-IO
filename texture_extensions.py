@@ -548,18 +548,23 @@ def setupMaterialsForObject(obj, texture):
                 if matName:
                     polygons[x].material_index = materialIndexMap[matName]
 
-def setParamatersForOperator(operator):
+def setParamatersForOperator(operator, collect=[]):
+    retVal = [None] * len(collect)
     try:
         params = Configuration.get(operator.bl_label)
     except:
-        return
+        return retVal
 
     for key, value in params.items():
-        if not key in operator.rna_type.properties.keys():
+        if key in collect:
+            retVal[collect.index(key)] = value
+        elif not key in operator.rna_type.properties.keys():
             string = "Property \""+str(key)+"\" not found in operator "+operator.bl_label+". This means your texture_config.json is invalid!"
             print(string)
             operator.report({"ERROR"}, string)
-        setattr(operator,key, value)
+        else:
+            setattr(operator,key, value)
+    return retVal
 
 class SetupTextureTemplate(bpy.types.Operator):
     """Copies a mesh and creates a template for full texturing.
@@ -655,6 +660,7 @@ class SetupTextureInitial(bpy.types.Operator):
         return {'FINISHED'}
     
     def invoke(self, context, event):
+        setParamatersForOperator(self)
         wm = context.window_manager
 
         obj = bpy.context.active_object
@@ -964,7 +970,7 @@ class SetupTextureComplete(bpy.types.Operator):
 
 
     def execute(self, context):
-
+        setParamatersForOperator(self)
         methods = [self.setupBake, self.setupEdgeHighlights, self.setupDistanceField, self.setupMaterialBake, self.clearEdgeSharp]
         self.__builtObjects = []
 
@@ -991,6 +997,7 @@ class BakeSelectedObjects(bpy.types.Operator):
                     uvData[loopIdx].uv[0]+=move
     
     def execute(self, context):
+        setParamatersForOperator(self)
         success = 0
         for obj in bpy.context.selected_objects:
             try:
@@ -1134,6 +1141,7 @@ class UpdateDiffuseComposite(bpy.types.Operator):
 
 
     def invoke(self, context, event):
+        setParamatersForOperator(self)
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 
@@ -1145,6 +1153,7 @@ class DissolveTo(bpy.types.Operator):
     bl_options = {'UNDO'}
 
     def execute(self, context):
+        setParamatersForOperator(self)
         obj = bpy.context.active_object
         others = []
         for x in bpy.context.selected_objects:
@@ -1212,6 +1221,7 @@ class AssignFrom(bpy.types.Operator):
     hashFactor: IntProperty(name="Search Quadrants",description="The amount of zones to break the mesh up in to.", default=50, min=1, max=256)
 
     def execute(self, context):
+        setParamatersForOperator(self)
         applyTo = None
         materialSource = bpy.context.active_object
         for x in bpy.context.selected_objects:
@@ -1262,6 +1272,7 @@ class CalulateEdgeSharp(bpy.types.Operator):
     markLoose: BoolProperty(name="Mark Loose", description="Marks loose edges with freestyle mark", default=True)
     
     def execute(self, context):
+        setParamatersForOperator(self)
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
@@ -1321,21 +1332,18 @@ class TweakEdgeHighlights(bpy.types.Operator):
     settings: CollectionProperty(type = EdgeHighlightPropertyGroup)
 
     maxTaper: FloatProperty(name="Max Taper Angle",description="The largest angle that tapering is applied", min=0, max=radians(180), default=radians(90), subtype='ANGLE')
-    minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(180), default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
+    minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(180),\
+        default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
     taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.25)
 
     numPasses: IntProperty(name="Passes",description="The number of passes to perform",min=1,max=8,default=1)
 
-    def updateUIInitial(self, obj):
+    def updateUIInitial(self, obj, lineThickness=[], blurAmount=[], multiplier=[]):
         
         collection = self.settings
         collection.clear()
         for x in range(self.numPasses):
             collection.add()
-
-        lineThickness = []
-        blurAmount = []
-        multiplier = []
 
         defaultThickness = 1.0
         defaultBlur = 0.5
@@ -1424,6 +1432,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         return {'FINISHED'}
     
     def invoke(self, context, event):
+        lineThickness, blurAmount, multiplier = setParamatersForOperator(self, ["lineThickness", "blurAmount", "multiplier"])
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
@@ -1439,7 +1448,18 @@ class TweakEdgeHighlights(bpy.types.Operator):
         self.blurAmountSave = []
         self.multiplierSave = []
 
-        self.updateUIInitial(obj)
+        if lineThickness == None or blurAmount == None or multiplier == None:
+            if not (lineThickness == None and blurAmount == None and multiplier == None):
+                self.report({"ERROR"}, "Configuration for edge highlights requires lineThickness, blurAmount, and multiplier to be set")
+                return
+        elif len(lineThickness) != len(blurAmount) or len(lineThickness) != len(multiplier):
+            self.report({"ERROR"}, "One of lineThickness, blurAMount, or multiplier is not the same length as the others")
+            return
+        else:
+            self.numPasses = len(lineThickness)
+
+
+        self.updateUIInitial(obj, lineThickness, blurAmount, multiplier)
 
         return self.execute(context)
     
@@ -1727,6 +1747,7 @@ class TweakDistanceField(bpy.types.Operator):
         return {'FINISHED'}
     
     def invoke(self, context, event):
+        setParamatersForOperator(self)
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
@@ -1860,6 +1881,7 @@ class PackUndersideFaces(bpy.types.Operator):
     select: BoolProperty(name="Select Faces", description="Selects the faces that were altered", default=True)
     
     def execute(self, context):
+        setParamatersForOperator(self)
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
@@ -1920,6 +1942,7 @@ class SaveRawTextures(bpy.types.Operator):
     bl_options = {'REGISTER','UNDO'}
     
     def execute(self, context):
+        setParamatersForOperator(self)
         objects = []
         for obj in bpy.context.selected_objects:
             objects.append(obj)
@@ -2002,6 +2025,7 @@ class SaveTextures(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        setParamatersForOperator(self)
         self.objName = ""
         for obj in bpy.context.selected_objects:
             if OBJ_NAME_STRING in obj:
@@ -2032,6 +2056,7 @@ class UpdateLegacy(bpy.types.Operator):
     size: IntProperty(name="Texture Size",description="The texture size to use, set to zero to leave the same", default=0,min=0, max=4096)
     
     def execute(self, context):
+        setParamatersForOperator(self)
         objects = []
         for obj in bpy.context.selected_objects:
             if obj.type != "MESH":
