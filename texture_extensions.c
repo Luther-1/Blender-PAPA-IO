@@ -1093,3 +1093,13 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
         out[idx + 3] = temp[3];
     }
 }
+
+void multiplyAO(float* texture, int width, int height, float multiplyCount) {
+    int loops = width * height * 4;
+    #pragma omp parallel for
+    for(int idx = 0;idx < loops; idx+=4) {
+        texture[idx + 0] = powf(texture[idx + 0], multiplyCount);
+        texture[idx + 1] = powf(texture[idx + 1], multiplyCount);
+        texture[idx + 2] = powf(texture[idx + 2], multiplyCount);
+    }
+}

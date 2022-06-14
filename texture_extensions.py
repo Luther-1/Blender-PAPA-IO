@@ -987,6 +987,8 @@ class BakeSelectedObjects(bpy.types.Operator):
     bl_label = "PAPA Bake Objects"
     bl_options = {'REGISTER','UNDO'}
 
+    multiplyCount: FloatProperty(name="AO Multiply Count", description="The number of times to multiply the AO",min=1,max=16, default=0)
+
     def alterUvs(self, mesh, idx, move):
 
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -997,7 +999,11 @@ class BakeSelectedObjects(bpy.types.Operator):
                     uvData[loopIdx].uv[0]+=move
     
     def execute(self, context):
-        setParamatersForOperator(self)
+
+        if self.options.is_repeat:
+            self.multiplyAO(None)
+            return {'FINISHED'}
+        
         success = 0
         for obj in bpy.context.selected_objects:
             try:
@@ -1024,6 +1030,7 @@ class BakeSelectedObjects(bpy.types.Operator):
                         tex.scale(texSize[0],texSize[1])
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
                     self.alterUvs(obj,0,-1)
+                    self.multiplyAO(tex)
                 else:
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=128)
                     if shouldSupersample:
@@ -1053,6 +1060,32 @@ class BakeSelectedObjects(bpy.types.Operator):
 
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
         return {'FINISHED'}
+
+    def multiplyAO(self, imageTex):
+        if imageTex != None:
+            self.imageName = imageTex.name
+            self.AOStore = array('f', imageTex.pixels)
+            self.imgDimensionStore = imageTex.size
+
+        imgWidth = self.imgDimensionStore[0]
+        imgHeight = self.imgDimensionStore[1]
+
+        imageData = array('f', self.AOStore)
+        imagePointer = imageData.buffer_info()[0]
+
+        textureLibrary.multiplyAO(
+                                    ctypes.cast(imagePointer,ctypes.POINTER(ctypes.c_float)),
+                                    ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_float(self.multiplyCount))
+
+        image = bpy.data.images[self.imageName]
+        image.pixels = imageData
+        image.pack()
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+
+        return self.execute(context)
+        
 
 class UpdateDiffuseComposite(bpy.types.Operator):
     """Updates the current diffuse composite, or creates one"""
@@ -2313,6 +2346,9 @@ if path.exists(libPath):
         textureLibrary.compositeFinal.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),
                 ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),ctypes.c_int, ctypes.c_int, ctypes.c_int)
         textureLibrary.compositeFinal.resType = None
+
+        textureLibrary.multiplyAO.argTypes = (ctypes.POINTER(ctypes.c_float),ctypes.c_int, ctypes.c_int, ctypes.c_float)
+        textureLibrary.multiplyAO.resType = None
         print("PAPA IO: Texture Library ETex.dll successfully loaded")
     except Exception as e:
         print("TEXTURE LIBRARY MISSING ("+str(e)+")")
