@@ -1486,7 +1486,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         for x in range(len(collection)):
             prop = collection[x]
-            col = l.row(heading="Pass "+str(x + 1))
+            col = l.column(heading="Pass "+str(x + 1))
             row = col.row()
             row.prop(prop,"lineThickness")
 
