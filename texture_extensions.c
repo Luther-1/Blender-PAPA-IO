@@ -337,12 +337,14 @@ void writeSingleFloatBrush(float x, float y, int w, int h, void* _data, void*_ds
     }
 }
 
-void freeStructData(BitmaskData* bitmask, IslandLines* lines1, IslandLines* lines2, Island* islands, ThreadData* threadData, int numThreads, ImageData* imageData) {
+void freeStructData(BitmaskData* bitmask, IslandLines** lineList, int numLineLists, Island* islands, ThreadData* threadData, int numThreads, ImageData* imageData) {
     free(bitmask->bitmask);
     free(bitmask->dilatedBitmask);
     free(bitmask);
-    free(lines1);
-    free(lines2);
+    for(int i =0;i<numLineLists;i++) {
+        free(lineList[i]);
+    }
+    free(lineList);
     free(islands);
     for(int i =0;i<numThreads;i++) {
         free(threadData[i].scratch);
@@ -861,13 +863,14 @@ void generateBitmaskTest(float* dst, ImageData* data, Island* islands, int start
     }
 }
 
-void generateEdgeHighlights( float** lineData, float* tuvData, float* multipliers, int numEntries, int width, int height, float* dst ) {
+void generateEdgeHighlights( float** lineData, float* tuvData, float* multipliers, int numEntries, int numPasses, int width, int height, float* dst ) {
 
     int threads = omp_get_max_threads();
 
-    IslandLines* lines1 = convertLineData(lineData[0], numEntries);
-    IslandLines* lines2 = convertLineData(lineData[1], numEntries);
-    IslandLines* lines3 = convertLineData(lineData[2], numEntries);
+    IslandLines** lineList = malloc(sizeof(IslandLines*) * numPasses);
+    for(int i =0;i<numPasses;i++) {
+        lineList[i] = convertLineData(lineData[i], numEntries);
+    }
     Island* islands = convertIslandData(tuvData, numEntries);
     ImageData* imageData = createImageData(width, height);
     ThreadData* threadData = createThreadData(threads, imageData);
@@ -881,15 +884,15 @@ void generateEdgeHighlights( float** lineData, float* tuvData, float* multiplier
         #pragma omp parallel for
         for( int k = i;k < i2;k++ ) {
             ThreadData* d = threadData + omp_get_thread_num();
-            drawLineSegments(dst, bitmaskData, lines1 + k, imageData, d, multipliers[0]);
-            drawLineSegments(dst, bitmaskData, lines2 + k, imageData, d, multipliers[1]);
-            drawLineSegments(dst, bitmaskData, lines3 + k, imageData, d, multipliers[2]);
+            for(int j = 0;j< numPasses; j++) {
+                drawLineSegments(dst, bitmaskData, lineList[j] + k, imageData, d, multipliers[j]);
+            }
         }
 
     }
 
     copyTempToDst(imageData, dst);
-    freeStructData(bitmaskData, lines1, lines2, islands, threadData, threads, imageData);
+    freeStructData(bitmaskData, lineList, numPasses, islands, threadData, threads, imageData);
 }
 
 // tuv data is triangulated UVs which act as a mask to determine which pixels can be written to

@@ -21,7 +21,6 @@
 # SOFTWARE.
 
 import json
-
 import bpy
 from bpy_extras import mesh_utils;
 from mathutils import Vector
@@ -609,6 +608,7 @@ class SetupTextureTemplate(bpy.types.Operator):
 
     def invoke(self, context, event):
         setParamatersForOperator(self)
+        self.test_prop = bpy.props.StringProperty()
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 
@@ -1307,19 +1307,91 @@ class CalulateEdgeSharp(bpy.types.Operator):
 
         bpy.ops.object.mode_set(mode='EDIT')
 
+class EdgeHighlightPropertyGroup(bpy.types.PropertyGroup):
+    lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50)
+    blurAmount: FloatProperty(name="Blur",description="The amount to blur the edge highlights", min=0, max=50)
+    multiplier: FloatProperty(name="Multiplier",description="How much to multiply the values by", min=0, max=10)
+
 class TweakEdgeHighlights(bpy.types.Operator):
     """Draws the edge highlights to the specified texture"""
     bl_idname = "tweak_edges.papa_utils"
     bl_label = "PAPA Tweak Edge Highlights"
     bl_options = {'REGISTER','UNDO'}
 
-    lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50,default=1)
-    blurAmount: FloatProperty(name="Blur",description="The amount to blur the edge highlights", min=0, max=50, default=0.5)
-    multiplier: FloatProperty(name="Multiplier",description="How much to multiply the values by", min=0, max=10, default=1)
+    settings: CollectionProperty(type = EdgeHighlightPropertyGroup)
 
     maxTaper: FloatProperty(name="Max Taper Angle",description="The largest angle that tapering is applied", min=0, max=radians(180), default=radians(90), subtype='ANGLE')
     minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(180), default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
     taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.25)
+
+    numPasses: IntProperty(name="Passes",description="The number of passes to perform",min=1,max=8,default=1)
+
+    def updateUIInitial(self, obj):
+        
+        collection = self.settings
+        collection.clear()
+        for x in range(self.numPasses):
+            collection.add()
+
+        lineThickness = []
+        blurAmount = []
+        multiplier = []
+
+        defaultThickness = 1.0
+        defaultBlur = 0.5
+        defaultMultiplier = 1.0
+
+        try:
+            lineThickness = list(obj[EDGE_HIGHLIGHT_DILATE])
+            blurAmount = list(obj[EDGE_HIGHLIGHT_BLUR])
+            multiplier = list(obj[EDGE_HIGHLIGHT_MULTIPLIER])
+        except:
+            pass
+
+        for x in range(self.numPasses):
+            prop = collection[x]
+            try:
+                prop.lineThickness=lineThickness[x]
+                prop.blurAmount=blurAmount[x]
+                prop.multiplier=multiplier[x]
+            except:
+                prop.lineThickness=defaultThickness
+                prop.blurAmount=defaultBlur
+                prop.multiplier=defaultMultiplier
+
+        # keep the data saved just in case someone accidentally moves the slider too far
+        lineThickness = []
+        blurAmount = []
+        multiplier = []
+
+        for prop in self.settings:
+            lineThickness.append(prop.lineThickness)
+            blurAmount.append(prop.blurAmount)
+            multiplier.append(prop.multiplier)
+
+        self.lineThicknessSave = lineThickness
+        self.blurAmountSave = blurAmount
+        self.multiplierSave = multiplier
+
+    def updateUI(self, obj):
+        collection = self.settings
+        collection.clear()
+        for x in range(self.numPasses):
+            collection.add()
+
+        for x in range(self.numPasses):
+            prop = collection[x]
+            
+            try:
+                prop.lineThickness=self.lineThicknessSave[x]
+                prop.blurAmount=self.blurAmountSave[x]
+                prop.multiplier=self.multiplierSave[x]
+            except:
+                lastProp = collection[x-1]
+                prop.lineThickness=lastProp.lineThickness
+                prop.blurAmount=lastProp.blurAmount
+                prop.multiplier=lastProp.multiplier
+
 
     
     def execute(self, context):
@@ -1330,10 +1402,24 @@ class TweakEdgeHighlights(bpy.types.Operator):
         except:
             self.report({'ERROR'},"Selected object must be an edge highlights object")
             return {'CANCELLED'}
+
+        if(self.lastNumPasses != self.numPasses or not self.options.is_repeat):
+            self.updateUI(obj)
+
+        lineThickness = []
+        blurAmount = []
+        multiplier = []
+
+        for prop in self.settings:
+            lineThickness.append(prop.lineThickness)
+            blurAmount.append(prop.blurAmount)
+            multiplier.append(prop.multiplier)
         
 
-        self.processObject(obj, tex, self.lineThickness, self.blurAmount, self.multiplier,
+        self.processObject(obj, tex, lineThickness, blurAmount, multiplier,
                                         self.minTaper, self.maxTaper, self.taperFactor)
+
+        self.lastNumPasses = self.numPasses
 
         return {'FINISHED'}
     
@@ -1344,13 +1430,62 @@ class TweakEdgeHighlights(bpy.types.Operator):
             return {'CANCELLED'}
 
         try:
-            self.lineThickness = obj[EDGE_HIGHLIGHT_DILATE]
-            self.blurAmount = obj[EDGE_HIGHLIGHT_BLUR]
-            self.multiplier = obj[EDGE_HIGHLIGHT_MULTIPLIER]
+            self.lastNumPasses = len(obj[EDGE_HIGHLIGHT_DILATE])
+            self.numPasses = self.lastNumPasses
         except:
-            pass
+            self.lastNumPasses = 1
+
+        self.lineThicknessSave = []
+        self.blurAmountSave = []
+        self.multiplierSave = []
+
+        self.updateUIInitial(obj)
 
         return self.execute(context)
+    
+    def draw(self, context):
+        l = self.layout
+
+        collection = self.settings
+
+        row = l.row()
+        row.prop(self,"numPasses")
+
+        l.row().separator()
+
+        row = l.row()
+        row.prop(self,"maxTaper")
+
+        row = l.row()
+        row.prop(self,"minTaper")
+
+        row = l.row()
+        row.prop(self,"taperFactor")
+
+        l.row().separator()
+
+        for x in range(len(collection)):
+            prop = collection[x]
+            col = l.row(heading="Pass "+str(x + 1))
+            row = col.row()
+            row.prop(prop,"lineThickness")
+
+            row = col.row()
+            row.prop(prop,"blurAmount")
+
+            row = col.row()
+            row.prop(prop,"multiplier")
+
+    def saveProperties(self, thickness, blur, multiplier):
+        for x in range(len(thickness)):
+            if len(self.lineThicknessSave) > x:
+                self.lineThicknessSave[x] = thickness[x]
+                self.blurAmountSave[x] = blur[x]
+                self.multiplierSave[x] = multiplier[x]
+            else:
+                self.lineThicknessSave.append(thickness[x])
+                self.blurAmountSave.append(blur[x])
+                self.multiplierSave.append(multiplier[x])
 
     def getEdgeToAngle(self, mesh):
 
@@ -1511,10 +1646,11 @@ class TweakEdgeHighlights(bpy.types.Operator):
         if not textureLibrary:
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
             return
-
+            
         obj[EDGE_HIGHLIGHT_DILATE] = thickness
         obj[EDGE_HIGHLIGHT_BLUR] = blur
         obj[EDGE_HIGHLIGHT_MULTIPLIER] = multiplier
+        self.saveProperties(thickness, blur, multiplier)
 
         islands, islandMap = self.getIslandMap(obj)
         edgeMap = self.getEdgeToAngle(obj)
@@ -1523,19 +1659,20 @@ class TweakEdgeHighlights(bpy.types.Operator):
         tuvs = array('f',triangulatedUvs)
         tuvPointer = tuvs.buffer_info()[0]
 
-        if len(triangulatedUvs) == 0:
-            self.report({"ERROR"},"Model has no freestyle marked edges.")
-            return
-
         islandSizes = self.getOrderedIslandSizes(triangulatedUvs)
 
-        lines1 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness, blur)
-        lines2 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness/3, blur*4)
-        lines3 = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness/4, blur*12)
-        lines1 = array('f',lines1)
-        lines2 = array('f',lines2)
-        lines3 = array('f',lines3)
-        lines = array('Q',[lines1.buffer_info()[0], lines2.buffer_info()[0], lines3.buffer_info()[0]])
+        lineList = []
+        lineArrayList = []
+        linePointers = []
+
+        for x in range(len(thickness)):
+            lines = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness[x], blur[x])
+            lineList.append(lines) # save the data so it cannot be deallocated
+            arr = array('f',lines)
+            lineArrayList.append(arr)
+            linePointers.append(arr.buffer_info()[0])
+
+        lines = array('Q',linePointers)
         linePointer = lines.buffer_info()[0]
 
         dataLen = len(islands)
@@ -1552,13 +1689,15 @@ class TweakEdgeHighlights(bpy.types.Operator):
             outData = array('f',[0.0] * imgDataSize)
         outPointer = outData.buffer_info()[0]
 
-        extraData = array('f',[multiplier,multiplier/2,multiplier/3])
+        extraData = array('f',multiplier)
         extraPointer = extraData.buffer_info()[0]
+
+        extraPointerLength = len(multiplier)
 
         textureLibrary.generateEdgeHighlights(  ctypes.cast(linePointer,ctypes.POINTER(ctypes.POINTER(ctypes.c_float))),
                                                 ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)),
                                                 ctypes.cast(extraPointer, ctypes.POINTER(ctypes.c_float)),
-                                                ctypes.c_int(dataLen),
+                                                ctypes.c_int(dataLen), ctypes.c_int(extraPointerLength),
                                                 ctypes.c_int(imgWidth), ctypes.c_int(imgHeight),
                                                 ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
 
@@ -2053,6 +2192,28 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[EDGE_HIGHLIGHT_TEXTURE] = img
                     success+=1
 
+                # convert properties into lists
+                if EDGE_HIGHLIGHT_DILATE in obj:
+                    try:
+                        iter(obj[EDGE_HIGHLIGHT_DILATE])
+                    except:
+                        obj[EDGE_HIGHLIGHT_DILATE] = [obj[EDGE_HIGHLIGHT_DILATE]]
+                        success+=1
+
+                if EDGE_HIGHLIGHT_BLUR in obj:
+                    try:
+                        iter(obj[EDGE_HIGHLIGHT_BLUR])
+                    except:
+                        obj[EDGE_HIGHLIGHT_BLUR] = [obj[EDGE_HIGHLIGHT_BLUR]]
+                        success+=1
+                    
+                if EDGE_HIGHLIGHT_MULTIPLIER in obj:
+                    try:
+                        iter(obj[EDGE_HIGHLIGHT_MULTIPLIER])
+                    except:
+                        obj[EDGE_HIGHLIGHT_MULTIPLIER] = [obj[EDGE_HIGHLIGHT_MULTIPLIER]]
+                        success+=1
+
         # resize images
         if self.size != 0:
             for obj in objects:
@@ -2117,7 +2278,7 @@ if path.exists(libPath):
     try:
         textureLibrary = ctypes.CDLL(libPath,winmode=0)
         textureLibrary.generateEdgeHighlights.argTypes = (ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), 
-                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_float))
+                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateEdgeHighlights.resType = None
 
         textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int,
@@ -2140,6 +2301,7 @@ _papa_texture_extension_classes = (
     CalulateEdgeSharp,
     DissolveTo,
     AssignFrom,
+    EdgeHighlightPropertyGroup,
     TweakEdgeHighlights,
     TweakDistanceField,
     BakeSelectedObjects,
