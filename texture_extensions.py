@@ -549,6 +549,19 @@ def setupMaterialsForObject(obj, texture):
                 if matName:
                     polygons[x].material_index = materialIndexMap[matName]
 
+def setParamatersForOperator(operator):
+    try:
+        params = Configuration.get(operator.bl_label)
+    except:
+        return
+
+    for key, value in params.items():
+        if not key in operator.rna_type.properties.keys():
+            string = "Property \""+str(key)+"\" not found in operator "+operator.bl_label+". This means your texture_config.json is invalid!"
+            print(string)
+            operator.report({"ERROR"}, string)
+        setattr(operator,key, value)
+
 class SetupTextureTemplate(bpy.types.Operator):
     """Copies a mesh and creates a template for full texturing.
     This function does have some limitations which can be solved by using Setup Texture Initial instead"""
@@ -595,12 +608,13 @@ class SetupTextureTemplate(bpy.types.Operator):
         
 
     def invoke(self, context, event):
+        setParamatersForOperator(self)
         wm = context.window_manager
         return wm.invoke_props_dialog(self)
 
 class SetupTextureFromTemplate(bpy.types.Operator):
     """Invokes Setup Texture Initial and then Setup Texture Complete"""
-    bl_idname = "setup_fromtemplate.papa_utils"
+    bl_idname = "setup_from_template.papa_utils"
     bl_label = "PAPA Setup Texture From Template"
     bl_options = {'UNDO'}
 
@@ -619,9 +633,6 @@ class SetupTextureFromTemplate(bpy.types.Operator):
         bpy.ops.setup_bake.papa_utils("EXEC_DEFAULT")
 
         return {'FINISHED'}
-
-    def setupObject(self, obj, texSize):
-        pass
         
 
 class SetupTextureInitial(bpy.types.Operator):
