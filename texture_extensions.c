@@ -1062,15 +1062,16 @@ void compositeFinal(float* diffuse, float* ao, float* edgeHighlight, float* dist
 
         temp[3] = toLinearRGB(distanceField[idx]); // sample red, they're all the same
 
-        // perform soft light
+        // perform overlay
         float er = edgeHighlight[idx + 0];
         float eg = edgeHighlight[idx + 1];
         float eb = edgeHighlight[idx + 2];
         float ea = edgeHighlight[idx + 3];
 
-        temp2[0] = (1 - 2 * er) * powf(temp[0], 2.0f) + 2 * er * temp[0];
-        temp2[1] = (1 - 2 * eg) * powf(temp[1], 2.0f) + 2 * eg * temp[1];
-        temp2[2] = (1 - 2 * eb) * powf(temp[2], 2.0f) + 2 * eb * temp[2];
+        // https://docs.gimp.org/en/gimp-concepts-layer-modes.html
+        temp2[0] = (temp[0] + (1-temp[0]) * 2 * er) * temp[0];
+        temp2[1] = (temp[1] + (1-temp[1]) * 2 * eg) * temp[1];
+        temp2[2] = (temp[2] + (1-temp[2]) * 2 * eb) * temp[2];
 
         temp[0] = temp2[0] * ea + temp[0] * (1 - ea);
         temp[1] = temp2[1] * ea + temp[1] * (1 - ea);
