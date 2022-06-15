@@ -622,9 +622,6 @@ class SetupTextureFromTemplate(bpy.types.Operator):
     bl_idname = "setup_from_template.papa_utils"
     bl_label = "PAPA Setup Texture From Template"
     bl_options = {'UNDO'}
-
-    size: StringProperty(name="Texture Size",description="The size of the texture to use.",subtype="NONE",default="512")
-    extras: BoolProperty(name="Add Extra Shaders",description="Adds extra shaders to the mesh",default=False)
     
     def execute(self, context):
         obj = bpy.context.active_object
@@ -638,6 +635,10 @@ class SetupTextureFromTemplate(bpy.types.Operator):
         bpy.ops.setup_bake.papa_utils("EXEC_DEFAULT")
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
         
 
 class SetupTextureInitial(bpy.types.Operator):
@@ -970,7 +971,6 @@ class SetupTextureComplete(bpy.types.Operator):
 
 
     def execute(self, context):
-        setParamatersForOperator(self)
         methods = [self.setupBake, self.setupEdgeHighlights, self.setupDistanceField, self.setupMaterialBake, self.clearEdgeSharp]
         self.__builtObjects = []
 
@@ -980,6 +980,10 @@ class SetupTextureComplete(bpy.types.Operator):
                 return {'CANCELLED'}
 
         return {'FINISHED'}
+    
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
 
 class BakeSelectedObjects(bpy.types.Operator):
     """Bakes all selected objects' textures."""
@@ -987,7 +991,7 @@ class BakeSelectedObjects(bpy.types.Operator):
     bl_label = "PAPA Bake Objects"
     bl_options = {'REGISTER','UNDO'}
 
-    multiplyCount: FloatProperty(name="AO Multiply Count", description="The number of times to multiply the AO",min=1,max=16, default=0)
+    multiplyCount: FloatProperty(name="AO Multiply Count", description="The number of times to multiply the AO",min=1,max=16, default=1)
 
     def alterUvs(self, mesh, idx, move):
 
@@ -1067,6 +1071,9 @@ class BakeSelectedObjects(bpy.types.Operator):
             self.AOStore = array('f', imageTex.pixels)
             self.imgDimensionStore = imageTex.size
 
+        if not self.imageName:
+            return
+
         imgWidth = self.imgDimensionStore[0]
         imgHeight = self.imgDimensionStore[1]
 
@@ -1082,8 +1089,8 @@ class BakeSelectedObjects(bpy.types.Operator):
         image.pack()
 
     def invoke(self, context, event):
+        self.imageName = None
         setParamatersForOperator(self)
-
         return self.execute(context)
         
 
@@ -1186,7 +1193,6 @@ class DissolveTo(bpy.types.Operator):
     bl_options = {'UNDO'}
 
     def execute(self, context):
-        setParamatersForOperator(self)
         obj = bpy.context.active_object
         others = []
         for x in bpy.context.selected_objects:
@@ -1244,6 +1250,10 @@ class DissolveTo(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.dissolve_edges()
         return count
+    
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
         
 class AssignFrom(bpy.types.Operator):
     """Attempts to assign material slots from one mesh to another"""
@@ -1254,7 +1264,6 @@ class AssignFrom(bpy.types.Operator):
     hashFactor: IntProperty(name="Search Quadrants",description="The amount of zones to break the mesh up in to.", default=50, min=1, max=256)
 
     def execute(self, context):
-        setParamatersForOperator(self)
         applyTo = None
         materialSource = bpy.context.active_object
         for x in bpy.context.selected_objects:
@@ -1294,6 +1303,10 @@ class AssignFrom(bpy.types.Operator):
             poly = applyTo.data.polygons[x]
             poly.material_index = materialMapping[mapping[x]]
 
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
+
 class CalulateEdgeSharp(bpy.types.Operator):
     """Freestyle marks edges which separate faces with an angle greater than the specified angle."""
     bl_idname = "calculate_edges.papa_utils"
@@ -1305,7 +1318,6 @@ class CalulateEdgeSharp(bpy.types.Operator):
     markLoose: BoolProperty(name="Mark Loose", description="Marks loose edges with freestyle mark", default=True)
     
     def execute(self, context):
-        setParamatersForOperator(self)
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
@@ -1350,6 +1362,10 @@ class CalulateEdgeSharp(bpy.types.Operator):
                 edge.use_freestyle_mark = self.markLoose
 
         bpy.ops.object.mode_set(mode='EDIT')
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
 
 class EdgeHighlightPropertyGroup(bpy.types.PropertyGroup):
     lineThickness: FloatProperty(name="Width", description="The thickness to draw the edge highlights at",min=0,max=50)
@@ -1914,7 +1930,6 @@ class PackUndersideFaces(bpy.types.Operator):
     select: BoolProperty(name="Select Faces", description="Selects the faces that were altered", default=True)
     
     def execute(self, context):
-        setParamatersForOperator(self)
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
@@ -1924,6 +1939,10 @@ class PackUndersideFaces(bpy.types.Operator):
         self.report({"INFO"},"Packed "+str(result) + " UVs")
 
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
                 
 
     def processObject(self, mesh):
@@ -1975,7 +1994,6 @@ class SaveRawTextures(bpy.types.Operator):
     bl_options = {'REGISTER','UNDO'}
     
     def execute(self, context):
-        setParamatersForOperator(self)
         objects = []
         for obj in bpy.context.selected_objects:
             objects.append(obj)
@@ -2014,6 +2032,10 @@ class SaveRawTextures(bpy.types.Operator):
         area.type = prevType
         
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
 
 class SaveTextures(bpy.types.Operator):
     """Generates and then saves the needed textures for a PA model to the specified directory"""
@@ -2089,7 +2111,6 @@ class UpdateLegacy(bpy.types.Operator):
     size: IntProperty(name="Texture Size",description="The texture size to use, set to zero to leave the same", default=0,min=0, max=4096)
     
     def execute(self, context):
-        setParamatersForOperator(self)
         objects = []
         for obj in bpy.context.selected_objects:
             if obj.type != "MESH":
@@ -2295,6 +2316,10 @@ class UpdateLegacy(bpy.types.Operator):
         self.report({"INFO"},"Updated "+str(success)+" properties")
         
         return {'FINISHED'}
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        return self.execute(context)
 
 
 class TextureFunctions(bpy.types.Menu):
