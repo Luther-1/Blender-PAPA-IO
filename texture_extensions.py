@@ -555,15 +555,19 @@ def setParamatersForOperator(operator, collect=[]):
     except:
         return retVal
 
+    nameToProperty = {}
+    for prop in operator.rna_type.properties:
+        nameToProperty[prop.name] = prop
+
     for key, value in params.items():
         if key in collect:
             retVal[collect.index(key)] = value
-        elif not key in operator.rna_type.properties.keys():
+        elif not key in nameToProperty:
             string = "Property \""+str(key)+"\" not found in operator "+operator.bl_label+". This means your texture_config.json is invalid!"
             print(string)
             operator.report({"ERROR"}, string)
         else:
-            setattr(operator,key, value)
+            setattr(operator, nameToProperty[key], value)
     return retVal
 
 class SetupTextureTemplate(bpy.types.Operator):
@@ -1481,7 +1485,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         return {'FINISHED'}
     
     def invoke(self, context, event):
-        lineThickness, blurAmount, multiplier = setParamatersForOperator(self, ["lineThickness", "blurAmount", "multiplier"])
+        lineThickness, blurAmount, multiplier = setParamatersForOperator(self, ["Width", "Blur", "Multiplier"])
         obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'},"No Object given")
