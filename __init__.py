@@ -189,6 +189,8 @@ class PapaAddonPreferences(AddonPreferences):
     customColour1: FloatVectorProperty(name="Primary",min=0,max=1, subtype='COLOR', description="The primary custom colour.")
     customColour2: FloatVectorProperty(name="Secondary",min=0,max=1, subtype='COLOR', description="The secondary custom colour.")
 
+    textureExtensionsConfig: StringProperty(name="Texture Extensions Configuration", description="The configuration section to use in texture_config.json")
+
 class PapaExportMaterialListItem(PropertyGroup):
     exportIndex: IntProperty()
 

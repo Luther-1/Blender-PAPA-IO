@@ -49,11 +49,24 @@ MATERIAL_IDENTIFIER = "__PAPA_IO_MATERIAL"
 
 class Configuration:
     data = {}
+    selectedData = {}
+    valid=False
+
+    @classmethod
+    def getAddonPreferences(cls):
+        addonName = __name__.split(".")[0]
+        return bpy.context.preferences.addons[addonName].preferences
 
     @classmethod
     def setup(cls):
         file = open(path.dirname(path.abspath(__file__)) + path.sep + "texture_config.json", "r")
         cls.data = json.load(file)
+        
+        cls.setSelectedConfiguration(cls.getAddonPreferences().textureExtensionsConfig)
+
+    @classmethod
+    def isInvalid(cls):
+        return not cls.valid
 
     @classmethod
     def getDataForObject(cls, obj):
@@ -62,9 +75,27 @@ class Configuration:
 
     @classmethod
     def get(cls, name):
-        return cls.data[name]
+        return cls.selectedData[name]
 
-Configuration.setup()
+    @classmethod
+    def getAvailableConfigurations(cls):
+        ret = []
+        count = 0
+        for name in cls.data:
+            ret.append((name,name,name,"",count))
+            count+=1
+        return ret
+
+    @classmethod
+    def setSelectedConfiguration(cls, name):
+        try:
+            cls.selectedData = cls.data[name]
+            cls.valid = True
+            cls.getAddonPreferences().textureExtensionsConfig = name
+        except:
+            print("Invalid configuration name: "+str(name))
+            cls.valid = False
+            
 
 class OBJ_TYPES:
     TEMPLATE = "TEMPLATE"
@@ -2336,6 +2367,27 @@ class UpdateLegacy(bpy.types.Operator):
         setParamatersForOperator(self)
         return self.execute(context)
 
+def getConfigurations(self, context):
+    return Configuration.getAvailableConfigurations()
+
+class SetConfiguration(bpy.types.Operator):
+    """Generates and then saves the needed textures for a PA model to the specified directory"""
+    bl_idname = "set_configuration.papa_utils"
+    bl_label = "PAPA Set Configuration"
+    bl_options = {'REGISTER'}
+
+    configOptions: bpy.props.EnumProperty(name="Configuration Name", description="The configuration to use", \
+        default=None, options={"ANIMATABLE"}, items=getConfigurations)
+    
+    def execute(self, context):
+        Configuration.setSelectedConfiguration(self.configOptions)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        wm = context.window_manager
+
+        return wm.invoke_props_dialog(self)
+
 
 class TextureFunctions(bpy.types.Menu):
     """Panel for Blender PAPA IO functions"""
@@ -2361,12 +2413,17 @@ class TextureFunctions(bpy.types.Menu):
         DissolveTo,
         AssignFrom,
         UpdateLegacy,
+        SetConfiguration,
     ]
 
     def draw(self, context):
         l = self.layout
 
-        for option in self.options:
+        options = self.options
+        if Configuration.isInvalid():
+            options = [SetConfiguration]
+
+        for option in options:
             row = l.row()
             row.operator(option.bl_idname, text=option.bl_label)
 
@@ -2392,7 +2449,7 @@ if path.exists(libPath):
         textureLibrary.multiplyAO.resType = None
         print("PAPA IO: Texture Library ETex.dll successfully loaded")
     except Exception as e:
-        print("TEXTURE LIBRARY MISSING ("+str(e)+")")
+        print("TEXTURE LIBRARY MISSING ("+str(e)+")") 
 
 _papa_texture_extension_classes = (
     SetupTextureTemplate,
@@ -2412,7 +2469,9 @@ _papa_texture_extension_classes = (
     SaveTextures,
     UpdateLegacy,
     UpdateDiffuseComposite,
+    SetConfiguration,
     TextureFunctions,
+    
 )
 
 def view3d_menu_func_texture(self, context):
@@ -2422,6 +2481,8 @@ def papa_io_register_texture():
     from bpy.utils import register_class
     for cls in _papa_texture_extension_classes:
         register_class(cls)
+
+    Configuration.setup()
     
     bpy.types.VIEW3D_MT_object.append(view3d_menu_func_texture)
     
