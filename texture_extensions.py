@@ -2238,36 +2238,6 @@ class UpdateLegacy(bpy.types.Operator):
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
                     success+=1
-                matNames = [x.material.name if x.material else None for x in obj.material_slots]
-                matIdx = {}
-                selectObject(obj)
-                for x in range(len(obj.material_slots)):
-                    m = obj.material_slots[x].material
-                    if not m:
-                        continue
-                    matIdx[m.name] = x
-                if not "light_alt_diffuse" in matNames and "medium_diffuse" in matNames:
-                    mIdx = matIdx["medium_diffuse"]
-                    obj.material_slots[mIdx].material.name="light_alt_diffuse"
-                    success+=1
-
-                    mat = createMaterial("medium_diffuse",(0x4e,0x4e,0x4e),bpy.data.images[obj[TEX_NAME_STRING]])
-                    obj.data.materials.append(mat)
-                    obj.active_material_index=len(obj.data.materials)-1
-                    for _ in range(7):
-                        bpy.ops.object.material_slot_move(direction="UP")
-                    success+=1
-                if not "socket_diffuse" in matNames:
-                    mat = createMaterial("socket_diffuse",(0x07,0x07,0x0b),bpy.data.images[obj[TEX_NAME_STRING]])
-                    obj.data.materials.append(mat)
-                    obj.active_material_index=len(obj.data.materials)-1
-                    for _ in range(9):
-                        bpy.ops.object.material_slot_move(direction="UP")
-                    success+=1
-                if getObjectType(obj)==OBJ_TYPES.AO:
-                    if not "ao_bake_ignore" in obj.data.materials and TEX_NAME_STRING in obj:
-                        obj.data.materials.append(createMaterial("ao_bake_ignore",(0xff,0xff,0xff),getOrCreateImage(obj[TEX_NAME_STRING],obj[TEX_SIZE_INT]*2),attach=False))
-                        success+=1
 
 
             if getObjectType(obj)==OBJ_TYPES.MATERIAL:
