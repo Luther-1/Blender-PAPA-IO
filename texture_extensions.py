@@ -36,6 +36,8 @@ OBJ_TYPE_STRING = "__PAPA_IO_MESH_TYPE"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
 TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
 DIFFUSE_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
+AO_RAW_TEX_NAME_STRING = "__PAPA_IO_TEXTURE_AO_RAW"
+AO_MULTIPLY_FLOAT = "__PAPA_IO_AO_MULTIPLY"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
@@ -765,12 +767,15 @@ class SetupTextureComplete(bpy.types.Operator):
     
         # create the AO object
         texname = name+"_ao_bake"
+        rawTexname = name+"_ao_bake_raw"
         aoTex = getOrCreateImage(texname,texSize)
+        getOrCreateImage(rawTexname,texSize)
         ao = duplicateObject(obj, OBJ_TYPES.AO.lower())
         ao.location[0]+=ao.dimensions.x * 6
         ao[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         ao[OBJ_TYPE_STRING] = OBJ_TYPES.AO
-        ao[TEX_NAME_STRING]=texname
+        ao[TEX_NAME_STRING] = texname
+        ao[AO_RAW_TEX_NAME_STRING] = rawTexname
         ao[TEX_SHOULD_BAKE] = True
         ao[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(ao)
@@ -995,8 +1000,6 @@ class BakeSelectedObjects(bpy.types.Operator):
     bl_label = "PAPA Bake Objects"
     bl_options = {'REGISTER','UNDO'}
 
-    multiplyCount: FloatProperty(name="AO Multiply Count", description="The number of times to multiply the AO",min=1,max=16, default=1)
-
     def alterUvs(self, mesh, idx, move):
 
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -1007,20 +1010,21 @@ class BakeSelectedObjects(bpy.types.Operator):
                     uvData[loopIdx].uv[0]+=move
     
     def execute(self, context):
-
-        if self.options.is_repeat:
-            self.multiplyAO(None)
-            return {'FINISHED'}
-        
+        AOMesh = False
         success = 0
         for obj in bpy.context.selected_objects:
             try:
                 shouldBake = obj[TEX_SHOULD_BAKE]
                 texSize = obj[TEX_SIZE_INT]
+            except:
+                continue
+
+            try:
                 config = Configuration.getDataForObject(obj)
                 shouldSupersample = config["bake"]["supersample"]
             except:
-                continue
+                self.report({"ERROR"}, "Texture config file is missing supersample data for "+obj.name)
+                return {"CANCELLED"}
 
             if shouldBake:
                 tex = getOrCreateImage(obj[TEX_NAME_STRING])
@@ -1038,7 +1042,7 @@ class BakeSelectedObjects(bpy.types.Operator):
                         tex.scale(texSize[0],texSize[1])
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
                     self.alterUvs(obj,0,-1)
-                    self.multiplyAO(tex)
+                    AOMesh = obj
                 else:
                     bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=128)
                     if shouldSupersample:
@@ -1063,40 +1067,77 @@ class BakeSelectedObjects(bpy.types.Operator):
                 
                 # pack the updated image
                 tex.pack()
+
+                if getObjectType(obj) == OBJ_TYPES.AO:
+                    tex2 = getOrCreateImage(obj[AO_RAW_TEX_NAME_STRING], texSize[0])
+                    tex2.pixels = tex.pixels
+                    tex2.pack()
                 
                 success+=1
 
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
+        if AOMesh:
+            selectObject(AOMesh)
+            # in case they have a default setting
+            bpy.ops.multiply_ao.papa_utils("INVOKE_DEFAULT") 
         return {'FINISHED'}
 
-    def multiplyAO(self, imageTex):
-        if imageTex != None:
-            self.imageName = imageTex.name
-            self.AOStore = array('f', imageTex.pixels)
-            self.imgDimensionStore = imageTex.size
+    def invoke(self, context, event):
+        self.imageName = None
+        setParamatersForOperator(self)
+        return self.execute(context)
 
-        if not self.imageName:
-            return
+class MultiplyAO(bpy.types.Operator):
+    """Multiplies the AO with itself the specified number of times"""
+    bl_idname = "multiply_ao.papa_utils"
+    bl_label = "PAPA Multiply Ambient Occlusion"
+    bl_options = {'REGISTER','UNDO'}
 
-        imgWidth = self.imgDimensionStore[0]
-        imgHeight = self.imgDimensionStore[1]
+    multiplyCount: FloatProperty(name="Multiply Count", description="The number of times to multiply the texture",min=1,max=16, default=1)
 
-        imageData = array('f', self.AOStore)
+    def execute(self, context):
+        dstTex = getOrCreateImage(self.dstTexName)
+        imgWidth = dstTex.size[0]
+        imgHeight = dstTex.size[1]
+
+        imageData = array('f', self.pixelStore)
         imagePointer = imageData.buffer_info()[0]
 
         textureLibrary.multiplyAO(
                                     ctypes.cast(imagePointer,ctypes.POINTER(ctypes.c_float)),
                                     ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_float(self.multiplyCount))
 
-        image = bpy.data.images[self.imageName]
-        image.pixels = imageData
-        image.pack()
+        
+        dstTex.pixels = imageData
+        dstTex.pack()
+
+        return {"FINISHED"}
+
+    def setupObject(self, obj):
+        if not obj:
+            self.report({'ERROR'}, "No object given")
+            return {'CANCELLED'}
+
+        if not getObjectType(obj) == OBJ_TYPES.AO:
+            self.report({'ERROR'}, "Selected object must be a PAPA Texture Extensions AO object")
+            return {'CANCELLED'}
+
+        try:
+            self.multiplyCount = obj[AO_MULTIPLY_FLOAT]
+        except:
+            pass
+
+        self.dstTexName = obj[TEX_NAME_STRING]
+        dstTex = getOrCreateImage(obj[TEX_NAME_STRING])
+        width = dstTex.size[0]
+        self.pixelStore = array('f', getOrCreateImage(obj[AO_RAW_TEX_NAME_STRING], width).pixels)
+
+        return None
 
     def invoke(self, context, event):
-        self.imageName = None
         setParamatersForOperator(self)
+        self.setupObject(bpy.context.active_object)
         return self.execute(context)
-        
 
 class UpdateDiffuseComposite(bpy.types.Operator):
     """Updates the current diffuse composite, or creates one"""
@@ -2340,14 +2381,15 @@ class TextureFunctions(bpy.types.Menu):
         SetupTextureComplete,
         PackUndersideFaces,
         CalulateEdgeSharp,
-        DissolveTo,
-        AssignFrom,
+        BakeSelectedObjects,
+        MultiplyAO,
         TweakEdgeHighlights,
         TweakDistanceField,
-        BakeSelectedObjects,
         UpdateDiffuseComposite,
         SaveTextures,
         SaveRawTextures,
+        DissolveTo,
+        AssignFrom,
         UpdateLegacy,
     ]
 
@@ -2391,6 +2433,7 @@ _papa_texture_extension_classes = (
     CalulateEdgeSharp,
     DissolveTo,
     AssignFrom,
+    MultiplyAO,
     EdgeHighlightPropertyGroup,
     TweakEdgeHighlights,
     TweakDistanceField,
