@@ -1180,8 +1180,6 @@ class UpdateDiffuseComposite(bpy.types.Operator):
     bl_idname = "composite_update.papa_utils"
     bl_label = "PAPA Update Diffuse Composite"
 
-    multiplyCount: IntProperty(name="Multiply Count", description="How many times to apply the multiply filter for AO", default=1, max=16)
-
     def execute(self, context):
         obj = bpy.context.active_object
 
@@ -1254,7 +1252,7 @@ class UpdateDiffuseComposite(bpy.types.Operator):
                                         ctypes.cast(edgeHighlightPointer,ctypes.POINTER(ctypes.c_float)),
                                         ctypes.cast(distanceFieldPointer,ctypes.POINTER(ctypes.c_float)),
                                         ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)),
-                                        ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_int(self.multiplyCount))
+                                        ctypes.c_int(imgWidth), ctypes.c_int(imgHeight))
                                                 
 
         diffuse[DIFFUSE_COMPOSITE_TEXTURE].pixels = outData
@@ -2126,7 +2124,6 @@ class SaveTextures(bpy.types.Operator):
 
     directory: StringProperty(subtype="DIR_PATH")
     rename: StringProperty(name="Name", description="Name to prepend the textures with.",default="",maxlen=1024)
-    multiplyCount: IntProperty(name="Multiply Count", description="How many times to apply the multiply filter for AO", default=1, max=16, min=1)
     
     def execute(self, context):
         area = bpy.context.workspace.screens[0].areas[0]
@@ -2139,7 +2136,7 @@ class SaveTextures(bpy.types.Operator):
         mask = findObject(self.objName, OBJ_TYPES.MASK)
 
         selectObject(diffuse)
-        bpy.ops.composite_update.papa_utils("EXEC_DEFAULT", multiplyCount=self.multiplyCount)
+        bpy.ops.composite_update.papa_utils("EXEC_DEFAULT")
 
         diffuseTex = diffuse[DIFFUSE_COMPOSITE_TEXTURE]
         materialTex = getOrCreateImage(material[TEX_NAME_STRING])
