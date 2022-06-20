@@ -1462,7 +1462,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
     maxTaper: FloatProperty(name="Max Taper Angle",description="The largest angle that tapering is applied", min=0, max=radians(180), default=radians(90), subtype='ANGLE')
     minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(180),\
         default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
-    taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.25)
+    taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.5)
 
     numPasses: IntProperty(name="Passes",description="The number of passes to perform",min=1,max=8,default=1)
 
