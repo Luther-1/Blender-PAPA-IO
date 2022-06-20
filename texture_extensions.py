@@ -92,6 +92,7 @@ class Configuration:
             cls.selectedData = cls.data[name]
             cls.valid = True
             cls.getAddonPreferences().textureExtensionsConfig = name
+            bpy.context.preferences.is_dirty = True # preferences does not detect changes made using python, only through the UI
         except:
             print("Invalid configuration name: "+str(name))
             cls.valid = False
@@ -1041,27 +1042,27 @@ class BakeSelectedObjects(bpy.types.Operator):
                     uvData[loopIdx].uv[0]+=move
     
     def execute(self, context):
-        AOMesh = False
+        AOMesh = None
         success = 0
+        
         for obj in bpy.context.selected_objects:
             try:
                 shouldBake = obj[TEX_SHOULD_BAKE]
-                texSize = obj[TEX_SIZE_INT]
             except:
                 continue
 
-            try:
-                config = Configuration.getDataForObject(obj)
-                shouldSupersample = config["bake"]["supersample"]
-            except:
-                self.report({"ERROR"}, "Texture config file is missing supersample data for "+obj.name)
-                return {"CANCELLED"}
-
             if shouldBake:
+                try:
+                    config = Configuration.getDataForObject(obj)
+                    shouldSupersample = config["bake"]["supersample"]
+                except:
+                    self.report({"ERROR"}, "Texture config file is missing supersample data for "+obj.name)
+                    return {"CANCELLED"}
+
                 tex = getOrCreateImage(obj[TEX_NAME_STRING])
+                texSize = (tex.size[0], tex.size[1])
 
                 if shouldSupersample:
-                    texSize = (tex.size[0], tex.size[1])
                     tex.scale(texSize[0]*2,texSize[1]*2)
                 
                 selectObject(obj)
@@ -1101,12 +1102,13 @@ class BakeSelectedObjects(bpy.types.Operator):
 
                 if getObjectType(obj) == OBJ_TYPES.AO:
                     tex2 = getOrCreateImage(obj[AO_RAW_TEX_NAME_STRING], texSize[0])
-                    tex2.pixels = tex.pixels
+                    tex2.pixels[:] = tex.pixels[:]
                     tex2.pack()
                 
                 success+=1
 
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
+        print("Report")
         if AOMesh:
             selectObject(AOMesh)
             # in case they have a default setting
@@ -1116,7 +1118,9 @@ class BakeSelectedObjects(bpy.types.Operator):
     def invoke(self, context, event):
         self.imageName = None
         setParamatersForOperator(self)
-        return self.execute(context)
+        val =  self.execute(context)
+        print("Finished")
+        return val
 
 class MultiplyAO(bpy.types.Operator):
     """Multiplies the AO with itself the specified number of times"""
