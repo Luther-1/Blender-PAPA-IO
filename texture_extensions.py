@@ -712,10 +712,8 @@ class SetupTextureInitial(bpy.types.Operator):
             self.report({'ERROR'},"No Object given")
             return {'CANCELLED'}
         
-        try:
+        if TEX_SIZE_INT in obj:
             self.size = obj[TEX_SIZE_INT]
-        except:
-            pass
 
         return wm.invoke_props_dialog(self)
 
@@ -1167,12 +1165,8 @@ class MultiplyAO(bpy.types.Operator):
             self.report({'ERROR'}, "Selected object must be a PAPA Texture Extensions AO object")
             return {'CANCELLED'}
 
-        try:
+        if AO_MULTIPLY_FLOAT in obj:
             self.multiplyCount = obj[AO_MULTIPLY_FLOAT]
-        except:
-            pass
-
-
         
         self.dstTexName = obj[TEX_NAME_STRING]
         dstTex = getOrCreateImage(obj[TEX_NAME_STRING])
@@ -1914,10 +1908,8 @@ class TweakDistanceField(bpy.types.Operator):
             self.report({'ERROR'},"No Object given")
             return {'CANCELLED'}
         
-        try:
+        if DISTANCE_FIELD_TEXEL_INFO_FLOAT in obj:
             self.texelInfo = obj[DISTANCE_FIELD_TEXEL_INFO_FLOAT]
-        except:
-            pass
         return self.execute(context)
 
 
@@ -2241,8 +2233,6 @@ class UpdateLegacy(bpy.types.Operator):
             except:
                 pass
         
-        
-
         # copy the texture name from material if it is not defined already
         for obj in objects:
             if not TEX_NAME_STRING in obj or not obj[TEX_NAME_STRING] in bpy.data.images:
