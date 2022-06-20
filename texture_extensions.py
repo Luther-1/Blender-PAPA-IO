@@ -34,18 +34,18 @@ TEX_SIZE_INT = "__PAPA_IO_TEXTURE_SIZE"
 OBJ_NAME_STRING = "__PAPA_IO_MESH_NAME"
 OBJ_TYPE_STRING = "__PAPA_IO_MESH_TYPE"
 TEX_NAME_STRING = "__PAPA_IO_TEXTURE_NAME"
-TEX_SHOULD_BAKE = "__PAPA_IO_TEXTURE_BAKE"
+TEX_SHOULD_BAKE_INT = "__PAPA_IO_TEXTURE_BAKE"
 DIFFUSE_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
 AO_RAW_TEX_NAME_STRING = "__PAPA_IO_TEXTURE_AO_RAW"
 AO_MULTIPLY_FLOAT = "__PAPA_IO_AO_MULTIPLY"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
-EDGE_HIGHLIGHT_DILATE = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
-EDGE_HIGHLIGHT_BLUR = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
-EDGE_HIGHLIGHT_MULTIPLIER = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
+EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
+EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
+EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
-DISTANCE_FIELD_TEXEL_INFO = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
-MATERIAL_IDENTIFIER = "__PAPA_IO_MATERIAL"
+DISTANCE_FIELD_TEXEL_INFO_FLOAT = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
+MATERIAL_IDENTIFIER_INT = "__PAPA_IO_MATERIAL"
 
 class Configuration:
     data = {}
@@ -141,14 +141,14 @@ def srgbToLinearRGB(c):
 def createMaterial(name: str, colour: tuple, blenderImage, attach=False, returnExisting=True):
     try:
         mat = bpy.data.materials[name]
-        if MATERIAL_IDENTIFIER in mat and returnExisting:
+        if MATERIAL_IDENTIFIER_INT in mat and returnExisting:
             return mat
     except:
         pass
 
     mat = bpy.data.materials.new(name=name)
     mat.name = name # This bumps other materials with the same name out
-    mat[MATERIAL_IDENTIFIER] = True
+    mat[MATERIAL_IDENTIFIER_INT] = True
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = tuple([srgbToLinearRGB(c/0xff) for c in colour] + [1])
@@ -732,7 +732,7 @@ class SetupTextureInitial(bpy.types.Operator):
         diffuse[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         diffuse[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
         diffuse[TEX_NAME_STRING] = texname
-        diffuse[TEX_SHOULD_BAKE] = True
+        diffuse[TEX_SHOULD_BAKE_INT] = True
         diffuse[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         bpy.context.collection.objects.link(diffuse)
 
@@ -775,7 +775,7 @@ class SetupTextureComplete(bpy.types.Operator):
         material[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         material[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
         material[TEX_NAME_STRING] = texname
-        material[TEX_SHOULD_BAKE] = True
+        material[TEX_SHOULD_BAKE_INT] = True
         material[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(material)
         bpy.context.collection.objects.link(material)
@@ -790,7 +790,7 @@ class SetupTextureComplete(bpy.types.Operator):
         mask[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
         mask[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
         mask[TEX_NAME_STRING] = texname
-        mask[TEX_SHOULD_BAKE] = True
+        mask[TEX_SHOULD_BAKE_INT] = True
         mask[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(mask)
         bpy.context.collection.objects.link(mask)
@@ -808,7 +808,7 @@ class SetupTextureComplete(bpy.types.Operator):
         ao[OBJ_TYPE_STRING] = OBJ_TYPES.AO
         ao[TEX_NAME_STRING] = texname
         ao[AO_RAW_TEX_NAME_STRING] = rawTexname
-        ao[TEX_SHOULD_BAKE] = True
+        ao[TEX_SHOULD_BAKE_INT] = True
         ao[TEX_SIZE_INT] = obj[TEX_SIZE_INT]
         self.__builtObjects.append(ao)
         if ao.dimensions.x < 10:
@@ -856,7 +856,7 @@ class SetupTextureComplete(bpy.types.Operator):
         edgeHighlight[OBJ_TYPE_STRING] = OBJ_TYPES.EDGE_HIGHLIGHT
         edgeHighlight[EDGE_HIGHLIGHT_TEXTURE] = edgeHighlightTex
         edgeHighlight[TEX_NAME_STRING] = edgeHighlightTex.name
-        edgeHighlight[TEX_SHOULD_BAKE] = False
+        edgeHighlight[TEX_SHOULD_BAKE_INT] = False
         edgeHighlight[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
         self.__builtObjects.append(edgeHighlight)
         matData = edgeHighlight.data.materials
@@ -911,7 +911,7 @@ class SetupTextureComplete(bpy.types.Operator):
         distanceField[OBJ_TYPE_STRING] = OBJ_TYPES.DISTANCE_FIELD
         distanceField[DISTANCE_FIELD_TEXTURE] = distanceFieldTex
         distanceField[TEX_NAME_STRING] = distanceFieldTex.name
-        distanceField[TEX_SHOULD_BAKE] = False
+        distanceField[TEX_SHOULD_BAKE_INT] = False
         distanceField[TEX_SIZE_INT] = diffuse[TEX_SIZE_INT]
         self.__builtObjects.append(distanceField)
         matData = distanceField.data.materials
@@ -1047,7 +1047,7 @@ class BakeSelectedObjects(bpy.types.Operator):
         
         for obj in bpy.context.selected_objects:
             try:
-                shouldBake = obj[TEX_SHOULD_BAKE]
+                shouldBake = obj[TEX_SHOULD_BAKE_INT]
             except:
                 continue
 
@@ -1479,9 +1479,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
         defaultMultiplier = 1.0
 
         try:
-            lineThickness = list(obj[EDGE_HIGHLIGHT_DILATE])
-            blurAmount = list(obj[EDGE_HIGHLIGHT_BLUR])
-            multiplier = list(obj[EDGE_HIGHLIGHT_MULTIPLIER])
+            lineThickness = list(obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY])
+            blurAmount = list(obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY])
+            multiplier = list(obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY])
         except:
             pass
 
@@ -1568,7 +1568,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
             return {'CANCELLED'}
 
         try:
-            self.lastNumPasses = len(obj[EDGE_HIGHLIGHT_DILATE])
+            self.lastNumPasses = len(obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY])
             self.numPasses = self.lastNumPasses
         except:
             self.lastNumPasses = 1
@@ -1796,9 +1796,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
             return
             
-        obj[EDGE_HIGHLIGHT_DILATE] = thickness
-        obj[EDGE_HIGHLIGHT_BLUR] = blur
-        obj[EDGE_HIGHLIGHT_MULTIPLIER] = multiplier
+        obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY] = thickness
+        obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY] = blur
+        obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY] = multiplier
         self.saveProperties(thickness, blur, multiplier)
 
         islands, islandMap = self.getIslandMap(obj)
@@ -1883,7 +1883,7 @@ class TweakDistanceField(bpy.types.Operator):
             return {'CANCELLED'}
         
         try:
-            self.texelInfo = obj[DISTANCE_FIELD_TEXEL_INFO]
+            self.texelInfo = obj[DISTANCE_FIELD_TEXEL_INFO_FLOAT]
         except:
             pass
         return self.execute(context)
@@ -1991,7 +1991,7 @@ class TweakDistanceField(bpy.types.Operator):
         else:
             tInfo.value = self.texelInfo
         
-        obj[DISTANCE_FIELD_TEXEL_INFO] = tInfo.value
+        obj[DISTANCE_FIELD_TEXEL_INFO_FLOAT] = tInfo.value
         for node in matData.node_tree.nodes:
             if node.label == "TEMP_texelinfo":
                 node.inputs[1].default_value = tInfo.value
@@ -2267,8 +2267,8 @@ class UpdateLegacy(bpy.types.Operator):
         # general update / add properties
         for obj in objects:
             if getObjectType(obj) == OBJ_TYPES.DIFFUSE:
-                if not TEX_SHOULD_BAKE in obj:
-                    obj[TEX_SHOULD_BAKE]=True
+                if not TEX_SHOULD_BAKE_INT in obj:
+                    obj[TEX_SHOULD_BAKE_INT]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.DIFFUSE
@@ -2276,29 +2276,29 @@ class UpdateLegacy(bpy.types.Operator):
 
 
             if getObjectType(obj)==OBJ_TYPES.MATERIAL:
-                if not TEX_SHOULD_BAKE in obj:
-                    obj[TEX_SHOULD_BAKE]=True
+                if not TEX_SHOULD_BAKE_INT in obj:
+                    obj[TEX_SHOULD_BAKE_INT]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.MATERIAL
                     success+=1
             if getObjectType(obj)==OBJ_TYPES.MASK:
-                if not TEX_SHOULD_BAKE in obj:
-                    obj[TEX_SHOULD_BAKE]=True
+                if not TEX_SHOULD_BAKE_INT in obj:
+                    obj[TEX_SHOULD_BAKE_INT]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.MASK
                     success+=1
             if getObjectType(obj)==OBJ_TYPES.AO:
-                if not TEX_SHOULD_BAKE in obj:
-                    obj[TEX_SHOULD_BAKE]=True
+                if not TEX_SHOULD_BAKE_INT in obj:
+                    obj[TEX_SHOULD_BAKE_INT]=True
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.AO
                     success+=1
             if getObjectType(obj)==OBJ_TYPES.DISTANCE_FIELD:
-                if not TEX_SHOULD_BAKE in obj:
-                    obj[TEX_SHOULD_BAKE]=False
+                if not TEX_SHOULD_BAKE_INT in obj:
+                    obj[TEX_SHOULD_BAKE_INT]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.DISTANCE_FIELD
@@ -2309,8 +2309,8 @@ class UpdateLegacy(bpy.types.Operator):
                     obj[DISTANCE_FIELD_TEXTURE] = img
                     success+=1
             if getObjectType(obj)==OBJ_TYPES.EDGE_HIGHLIGHT:
-                if not TEX_SHOULD_BAKE in obj:
-                    obj[TEX_SHOULD_BAKE]=False
+                if not TEX_SHOULD_BAKE_INT in obj:
+                    obj[TEX_SHOULD_BAKE_INT]=False
                     success+=1
                 if not OBJ_TYPE_STRING in obj:
                     obj[OBJ_TYPE_STRING] = OBJ_TYPES.EDGE_HIGHLIGHT
@@ -2322,25 +2322,25 @@ class UpdateLegacy(bpy.types.Operator):
                     success+=1
 
                 # convert properties into lists
-                if EDGE_HIGHLIGHT_DILATE in obj:
+                if EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY in obj:
                     try:
-                        iter(obj[EDGE_HIGHLIGHT_DILATE])
+                        iter(obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY])
                     except:
-                        obj[EDGE_HIGHLIGHT_DILATE] = [obj[EDGE_HIGHLIGHT_DILATE]]
+                        obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY] = [obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY]]
                         success+=1
 
-                if EDGE_HIGHLIGHT_BLUR in obj:
+                if EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY in obj:
                     try:
-                        iter(obj[EDGE_HIGHLIGHT_BLUR])
+                        iter(obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY])
                     except:
-                        obj[EDGE_HIGHLIGHT_BLUR] = [obj[EDGE_HIGHLIGHT_BLUR]]
+                        obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY] = [obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY]]
                         success+=1
                     
-                if EDGE_HIGHLIGHT_MULTIPLIER in obj:
+                if EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY in obj:
                     try:
-                        iter(obj[EDGE_HIGHLIGHT_MULTIPLIER])
+                        iter(obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY])
                     except:
-                        obj[EDGE_HIGHLIGHT_MULTIPLIER] = [obj[EDGE_HIGHLIGHT_MULTIPLIER]]
+                        obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY] = [obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY]]
                         success+=1
 
         # resize images
