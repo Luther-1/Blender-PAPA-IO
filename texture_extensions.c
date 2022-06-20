@@ -326,13 +326,10 @@ void writeSingleFloatBrush(float x, float y, int w, int h, void* _data, void*_ds
             float brushX = x2 - xStart;
             float brushY = y2 - yStart;
 
-            // Both of these methods produce a slightly offset result. Peform it in both directions to fix.
-            float v1 = linearSampleBrush(brushX - fx, brushY - fy, (float*)data->brush, brushWidth, 0);
-            float v2 = linearSampleBrush(brushX + fx, brushY + fy, (float*)data->brush, brushWidth, 1);
-            float v3 = __max(v1,v2);
+            float v1 = linearSampleBrush(brushX - fx  + 0.5f, brushY - fy  + 0.5f, (float*)data->brush, brushWidth, 0);
             int imageIdx = IMAGE_INDEX(x2,y2,w);
-            float v4 = dst[imageIdx];
-            dst[imageIdx] = __max(v3,v4);
+            float v2 = dst[imageIdx];
+            dst[imageIdx] = __max(v1,v2);
         }
     }
 }
