@@ -42,6 +42,11 @@ EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
 EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
 EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
+EDGE_HIGHLIGHT_TAPER_MAX_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_TAPER_MAX"
+EDGE_HIGHLIGHT_TAPER_MIN_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_TAPER_MIN"
+EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_TAPER_FACTOR"
+EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_ISLAND_THRESHOLD"
+EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_ISLAND_FACTOR"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO_FLOAT = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
@@ -1463,6 +1468,8 @@ class TweakEdgeHighlights(bpy.types.Operator):
     minTaper: FloatProperty(name="Min Taper Angle",description="The smallest angle that tapering is applied", min=0, max=radians(180),\
         default=CalulateEdgeSharp.DEFAULT_ANGLE, subtype='ANGLE')
     taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.5)
+    islandThreshold: FloatProperty(name="Island Scale Threshold",description="Multiplier for when to start scaling lines due to small faces", min=0, max=64, default=0.5)
+    islandFactor: FloatProperty(name="Island Scale Factor",description="Multiplier for how fast to scale down lines on small faces", min=0, max=4, default=0)
 
     numPasses: IntProperty(name="Passes",description="The number of passes to perform",min=1,max=8,default=1)
 
@@ -1553,7 +1560,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         
 
         self.processObject(obj, tex, lineThickness, blurAmount, multiplier,
-                                        self.minTaper, self.maxTaper, self.taperFactor)
+                                        self.minTaper, self.maxTaper, self.taperFactor, self.islandThreshold, self.islandFactor)
 
         self.lastNumPasses = self.numPasses
 
@@ -1575,6 +1582,17 @@ class TweakEdgeHighlights(bpy.types.Operator):
         self.lineThicknessSave = []
         self.blurAmountSave = []
         self.multiplierSave = []
+
+        if EDGE_HIGHLIGHT_TAPER_MAX_FLOAT in obj:
+            self.maxTaper = obj[EDGE_HIGHLIGHT_TAPER_MAX_FLOAT]
+        if EDGE_HIGHLIGHT_TAPER_MIN_FLOAT in obj:
+            self.minTaper = obj[EDGE_HIGHLIGHT_TAPER_MIN_FLOAT]
+        if EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT in obj:
+            self.taperFactor = obj[EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT]
+        if EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT in obj:
+            self.islandThreshold = obj[EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT]
+        if EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT in obj:
+            self.islandFactor = obj[EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT]
 
         if lineThickness == None or blurAmount == None or multiplier == None:
             if not (lineThickness == None and blurAmount == None and multiplier == None):
@@ -1609,6 +1627,14 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         row = l.row()
         row.prop(self,"taperFactor")
+
+        l.row().separator()
+
+        row = l.row()
+        row.prop(self,"islandThreshold")
+
+        row = l.row()
+        row.prop(self,"islandFactor")
 
         l.row().separator()
 
@@ -1658,7 +1684,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
                 edgeMap[x] = arr[0].angle(arr[1], pi)
         return edgeMap
 
-    def getLines(self, mesh, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, baseThickness, baseBlur):
+    def getLines(self, mesh, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, baseThickness, baseBlur, islandThreshold, islandFactor):
         selectObject(mesh)
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -1668,7 +1694,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         thicknessAngleFactor = (baseThickness - minThickness) * angleFactor
 
         averageIslandSize = sum(islandSizes) / len(islandSizes)
-        averageIslandSizeDiv = averageIslandSize / 2
+        averageIslandSizeDiv = averageIslandSize * islandThreshold + 1e-8
 
         lines = [] # [num_lines_in_island, islandIdx, [x1,y1,x2,y2, thickness, blur...]...]
 
@@ -1718,7 +1744,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
                     # size pass
                     if islandSize < averageIslandSizeDiv:
-                        thickness = thickness * (islandSize / averageIslandSizeDiv)
+                        frac = (islandSize / averageIslandSizeDiv)
+                        val = pow(frac, 1 + islandFactor)
+                        thickness = thickness * val
 
                     lines.append(thickness)
                     lines.append(baseBlur)
@@ -1740,7 +1768,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
                 y2 = triangulatedUvs[y + 3]
                 x3 = triangulatedUvs[y + 4]
                 y3 = triangulatedUvs[y + 5]
-                islandSize += 1 / 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+                islandSize += abs(1 / 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)))
             x += numData
             islandSizes.append(islandSize)
         return islandSizes
@@ -1785,7 +1813,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         return islands, islandMap
 
 
-    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper):
+    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper, islandThreshold, islandFactor):
         # the following are converted into arrays of structs in C
         # lineData: array of floats [num_lines, mask_idx, [start, end, thickness, blur...]...] ends when start has a value of -infinity
         # triangulatedUVData: ordered list of float indices as follows [num_triangles, <triangulated UV data>...] ends when num_triangles has a value of -infinity
@@ -1798,6 +1826,11 @@ class TweakEdgeHighlights(bpy.types.Operator):
         obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY] = thickness
         obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY] = blur
         obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY] = multiplier
+        obj[EDGE_HIGHLIGHT_TAPER_MAX_FLOAT] = maxAngle
+        obj[EDGE_HIGHLIGHT_TAPER_MIN_FLOAT] = minAngle
+        obj[EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT] = minTaper
+        obj[EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT] = islandThreshold
+        obj[EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT] = islandFactor
         self.saveProperties(thickness, blur, multiplier)
 
         islands, islandMap = self.getIslandMap(obj)
@@ -1814,7 +1847,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         linePointers = []
 
         for x in range(len(thickness)):
-            lines = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness[x], blur[x])
+            lines = self.getLines(obj, islands, edgeMap, minAngle, maxAngle, minTaper, islandSizes, thickness[x], blur[x], islandThreshold, islandFactor)
             lineList.append(lines) # save the data so it cannot be deallocated
             arr = array('f',lines)
             lineArrayList.append(arr)
