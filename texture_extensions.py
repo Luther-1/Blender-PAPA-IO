@@ -801,7 +801,8 @@ class SetupTextureComplete(bpy.types.Operator):
         texname = name+"_ao_bake"
         rawTexname = name+"_ao_bake_raw"
         aoTex = getOrCreateImage(texname,texSize)
-        getOrCreateImage(rawTexname,texSize)
+        rawTex = getOrCreateImage(rawTexname,texSize)
+        rawTex.use_fake_user = 1 # keep this texture saved
         ao = duplicateObject(obj, OBJ_TYPES.AO.lower())
         ao.location[0]+=ao.dimensions.x * 6
         ao[OBJ_NAME_STRING] = obj[OBJ_NAME_STRING]
@@ -1131,6 +1132,7 @@ class MultiplyAO(bpy.types.Operator):
     multiplyCount: FloatProperty(name="Multiply Count", description="The number of times to multiply the texture",min=1,max=16, default=1)
 
     def execute(self, context):
+        obj = bpy.context.active_object
         dstTex = getOrCreateImage(self.dstTexName)
         imgWidth = dstTex.size[0]
         imgHeight = dstTex.size[1]
@@ -1142,13 +1144,16 @@ class MultiplyAO(bpy.types.Operator):
                                     ctypes.cast(imagePointer,ctypes.POINTER(ctypes.c_float)),
                                     ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_float(self.multiplyCount))
 
-        
+        obj[AO_MULTIPLY_FLOAT] = self.multiplyCount
         dstTex.pixels = imageData
         dstTex.pack()
 
         return {"FINISHED"}
 
-    def setupObject(self, obj):
+
+    def invoke(self, context, event):
+        setParamatersForOperator(self)
+        obj = bpy.context.active_object
         if not obj:
             self.report({'ERROR'}, "No object given")
             return {'CANCELLED'}
@@ -1162,16 +1167,12 @@ class MultiplyAO(bpy.types.Operator):
         except:
             pass
 
+
+        
         self.dstTexName = obj[TEX_NAME_STRING]
         dstTex = getOrCreateImage(obj[TEX_NAME_STRING])
         width = dstTex.size[0]
         self.pixelStore = array('f', getOrCreateImage(obj[AO_RAW_TEX_NAME_STRING], width).pixels)
-
-        return None
-
-    def invoke(self, context, event):
-        setParamatersForOperator(self)
-        self.setupObject(bpy.context.active_object)
         return self.execute(context)
 
 class UpdateDiffuseComposite(bpy.types.Operator):
