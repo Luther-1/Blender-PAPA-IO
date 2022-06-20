@@ -454,6 +454,12 @@
         "template": {
           "primary": "primary_mask",
           "secondary": "secondary_mask"
+        },
+        "diffuse": {
+          "red_glow_diffuse": "glow_mask",
+          "engine_glow_diffuse": "glow_mask",
+          "white_glow_diffuse": "glow_mask",
+          "green_glow_diffuse": "glow_mask"
         }
       },
       "bake": {
