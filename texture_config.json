@@ -217,5 +217,289 @@
       "light_material": "light_material",
       "dark_material": "dark_material"
     }
+  },
+  "Legion": {
+    "template": {
+      "create": {
+        "primary": [
+          255,
+          0,
+          0
+        ],
+        "secondary": [
+          0,
+          0,
+          0
+        ],
+        "dark": [
+          29,
+          39,
+          40
+        ],
+        "medium": [
+          78,
+          78,
+          78
+        ],
+        "light_alt": [
+          107,
+          107,
+          107
+        ],
+        "light": [
+          125,
+          125,
+          125
+        ],
+        "green_glow": [
+          96,
+          240,
+          0
+        ],
+        "red_glow": [
+          255,
+          0,
+          0
+        ],
+        "engine_glow": [
+          227,
+          173,
+          0
+        ],
+        "white_glow": [
+          255,
+          255,
+          255
+        ],
+        "black": [
+          0,
+          0,
+          0
+        ],
+        "socket": [
+          7,
+          7,
+          11
+        ]
+      },
+      "assign": {
+        "default": "light"
+      }
+    },
+    "diffuse": {
+      "create": {
+        "dark_diffuse": [
+          29,
+          39,
+          40
+        ],
+        "medium_diffuse": [
+          78,
+          78,
+          78
+        ],
+        "light_alt_diffuse": [
+          107,
+          107,
+          107
+        ],
+        "light_diffuse": [
+          125,
+          125,
+          125
+        ],
+        "green_glow_diffuse": [
+          96,
+          240,
+          0
+        ],
+        "red_glow_diffuse": [
+          255,
+          0,
+          0
+        ],
+        "engine_glow_diffuse": [
+          227,
+          173,
+          0
+        ],
+        "white_glow_diffuse": [
+          255,
+          255,
+          255
+        ],
+        "black_diffuse": [
+          0,
+          0,
+          0
+        ],
+        "socket_diffuse": [
+          7,
+          7,
+          11
+        ]
+      },
+      "assign": {
+        "default": "light_diffuse",
+        "template": {
+          "dark": "dark_diffuse",
+          "medium": "medium_diffuse",
+          "light_alt": "light_alt_diffuse",
+          "light": "light_diffuse",
+          "green_glow": "green_glow_diffuse",
+          "red_glow": "red_glow_diffuse",
+          "engine_glow": "engine_glow_diffuse",
+          "white_glow": "white_glow_diffuse",
+          "black": "black_diffuse",
+          "socket": "socket_diffuse"
+        }
+      },
+      "bake": {
+        "supersample": false,
+        "magic_pixel": {
+          "location": [1.0,1.0],
+          "color": [255,0,255,255]
+        }
+      }
+    },
+    "material": {
+      "create": {
+        "dark_material": [
+          192,
+          192,
+          255
+        ],
+        "light_material": [
+          240,
+          204,
+          255
+        ],
+        "glow_material": [
+          0,
+          0,
+          255
+        ],
+        "vent_material": [
+          0,
+          197,
+          255
+        ],
+        "tread_material": [
+          40,
+          197,
+          255
+        ],
+        "shiny_material": [
+          0,
+          255,
+          0
+        ],
+        "shiny_lesser_material": [
+          8,
+          185,
+          0
+        ]
+      },
+      "assign": {
+        "default": "vent_material",
+        "diffuse": {
+          "dark_diffuse": "dark_material",
+          "medium_diffuse": "dark_material",
+          "socket_diffuse": "dark_material",
+          "black_diffuse": "vent_material",
+          "light_diffuse": "light_material",
+          "light_alt_diffuse": "light_material",
+          "hazard_stripe": "light_material",
+          "hazard_stripe_inverted": "light_material",
+          "red_glow_diffuse": "glow_material",
+          "engine_glow_diffuse": "glow_material",
+          "white_glow_diffuse": "glow_material",
+          "green_glow_diffuse": "glow_material"
+        }
+      },
+      "bake": {
+        "supersample": false
+      }
+    },
+    "mask": {
+      "create": {
+        "primary_mask": [
+          255,
+          0,
+          0
+        ],
+        "secondary_mask": [
+          0,
+          255,
+          0
+        ],
+        "glow_mask": [
+          0,
+          0,
+          255
+        ],
+        "glow_primary_mask": [
+          255,
+          0,
+          255
+        ],
+        "black_mask": [
+          0,
+          0,
+          0
+        ]
+      },
+      "assign": {
+        "default": "black_mask",
+        "template": {
+          "primary": "primary_mask",
+          "secondary": "secondary_mask"
+        }
+      },
+      "bake": {
+        "supersample": false
+      }
+    },
+    "ao": {
+      "create": {
+        "ao_bake_ignore": [
+          255,
+          255,
+          255
+        ],
+        "ao_bake": {
+          "color": [
+            255,
+            255,
+            255
+          ],
+          "attach": true
+        }
+      },
+      "assign": {
+        "default": "ao_bake",
+        "template": {
+          "lights": "ao_bake_ignore",
+          "red_lights": "ao_bake_ignore"
+        },
+        "diffuse": {
+          "red_glow_diffuse": "ao_bake_ignore",
+          "engine_glow_diffuse": "ao_bake_ignore",
+          "white_glow_diffuse": "ao_bake_ignore",
+          "green_glow_diffuse": "ao_bake_ignore"
+        }
+      },
+      "bake": {
+        "supersample": true,
+        "magic_pixel": {
+          "location": [1.0,1.0],
+          "color": [255,255,255,255]
+        }
+      }
+    },
+    "edge_highlight": {
+      "light_material": "light_material",
+      "dark_material": "dark_material"
+    }
   }
 }
