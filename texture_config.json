@@ -129,14 +129,16 @@
           "medium_grey": "dark_material",
           "dark_grey": "dark_material",
           "lights": "glow_material",
-          "red_lights": "glow_material"
+          "red_lights": "glow_material",
+          "fab": "glow_material"
         },
         "diffuse": {
-          "light_grey": "light_material",
-          "medium_grey": "dark_material",
-          "dark_grey": "dark_material",
-          "lights": "glow_material",
-          "red_lights": "glow_material"
+          "light_grey_diffuse": "light_material",
+          "medium_grey_diffuse": "dark_material",
+          "dark_grey_diffuse": "dark_material",
+          "lights_diffuse": "glow_material",
+          "red_lights_diffuse": "glow_material",
+          "fab_diffuse": "glow_material"
         }
       },
       "bake": {
@@ -175,7 +177,15 @@
         "default": "black_mask",
         "template": {
           "primary": "primary_mask",
-          "secondary": "secondary_mask"
+          "secondary": "secondary_mask",
+          "lights": "glow_mask",
+          "red_lights": "glow_mask",
+          "fab": "glow_mask"
+        },
+        "diffuse": {
+          "lights_diffuse": "glow_mask",
+          "red_lights_diffuse": "glow_mask",
+          "fab_diffuse": "glow_mask"
         }
       },
       "bake": {
@@ -202,11 +212,13 @@
         "default": "ao_bake",
         "template": {
           "lights": "ao_bake_ignore",
-          "red_lights": "ao_bake_ignore"
+          "red_lights": "ao_bake_ignore",
+          "fab": "ao_bake_ignore"
         },
         "diffuse": {
           "lights": "ao_bake_ignore",
-          "red_lights": "ao_bake_ignore"
+          "red_lights": "ao_bake_ignore",
+          "fab_diffuse": "ao_bake_ignore"
         }
       },
       "bake": {
