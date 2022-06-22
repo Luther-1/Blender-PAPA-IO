@@ -543,7 +543,8 @@ def setupMaterialsForObject(obj, texture):
 
     materialMap = {}
     for x in range(len(obj.data.materials)):
-        materialMap[obj.data.materials[x].name] = materialList[x]
+        if obj.data.materials[x]: # empty material slot
+            materialMap[obj.data.materials[x].name] = materialList[x]
     
     obj.data.materials.clear()
 
