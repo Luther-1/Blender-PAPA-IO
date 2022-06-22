@@ -155,7 +155,7 @@ ImageData* createImageData(int width, int height) {
 
 BrushData* createBrushDataFloat(float thickness) {
     BrushData* data = (BrushData*) malloc(sizeof(BrushData));
-    int width = floor(thickness + 1) * 2 + 1; // add 1 so we can sample easier later
+    int width = floor(thickness + 2) * 2 + 1; // add 2 so we can sample easier later
     int height = width;
     data->brushWidth = width;
     data->brushHeight = height;
@@ -281,7 +281,7 @@ void writeEdgeAware(int x, int y, int w, int h, void* _data, void* _dst) {
     }
 }
 
-inline float linearSampleBrush(float brushX, float brushY, float* brush, int brushWidth, int invert) { // assumed this is always in range.
+inline float linearSampleBrush(float brushX, float brushY, float* brush, int brushWidth) { // assumed this is always in range.
     int bx = (int) brushX;
     int by = (int) brushY;
     float fx = brushX - bx;
@@ -289,14 +289,9 @@ inline float linearSampleBrush(float brushX, float brushY, float* brush, int bru
 
     int idx1 = IMAGE_INDEX(bx,by,brushWidth);
     int idx2 = idx1 + brushWidth;
-    if(invert) {
-        float lerp1 = brush[idx1] * fx + brush[idx1 + 1] * (1 - fx);
-        float lerp2 = brush[idx2] * fx + brush[idx2 + 1] * (1 - fx);
-        return lerp1 * fy + lerp2 * (1 - fy);
-    }
     float lerp1 = brush[idx1] * (1 - fx) + brush[idx1 + 1] * fx;
-        float lerp2 = brush[idx2] * (1 - fx) + brush[idx2 + 1] * fx;
-        return lerp1 * (1 - fy) + lerp2 * fy;
+    float lerp2 = brush[idx2] * (1 - fx) + brush[idx2 + 1] * fx;
+    return lerp1 * (1 - fy) + lerp2 * fy;
 
     
     
@@ -326,7 +321,7 @@ void writeSingleFloatBrush(float x, float y, int w, int h, void* _data, void*_ds
             float brushX = x2 - xStart;
             float brushY = y2 - yStart;
 
-            float v1 = linearSampleBrush(brushX - fx  + 0.5f, brushY - fy  + 0.5f, (float*)data->brush, brushWidth, 0);
+            float v1 = linearSampleBrush(brushX - fx  + 0.5f, brushY - fy  + 0.5f, (float*)data->brush, brushWidth);
             int imageIdx = IMAGE_INDEX(x2,y2,w);
             float v2 = dst[imageIdx];
             dst[imageIdx] = __max(v1,v2);
@@ -718,11 +713,17 @@ void drawLineSegmentThickness(LineData* lineData, ImageData* imageData, ThreadDa
 
     int ceilThickness = ceil(thickness + 1);
 
-    threadData->topLeft.x -= ceilThickness;
-    threadData->topLeft.y += ceilThickness;
+    int minX = __min(x0,x1);
+    int maxX = __max(x0,x1);
 
-    threadData->bottomRight.x += ceilThickness;
-    threadData->bottomRight.y -= ceilThickness;
+    int minY = __min(y0,y1);
+    int maxY = __max(y0,y1);
+
+    threadData->topLeft.x=minX - ceilThickness;
+    threadData->topLeft.y=maxY + ceilThickness;
+
+    threadData->bottomRight.x=maxX + ceilThickness;
+    threadData->bottomRight.y=minY - ceilThickness;
 
     drawLineFloat( threadData->scratch, x0, y0, x1, y1, imageData->width, imageData->height, 
                     __max(thickness / 10.0f, 0.01f), (void*)brushData, writeSingleFloatBrush );
@@ -802,7 +803,7 @@ void blurLineSegment(LineData* lineData, ImageData* imageData, ThreadData* threa
 void drawLineSegment(BitmaskData* bitmaskData, unsigned long long maskIdx, LineData* lineData, ImageData* imageData, ThreadData* threadData) {
 
     // preliminary pass to get the edges that the line would miss
-    drawLineSegmentEdgeAware(bitmaskData->bitmask, maskIdx, lineData, imageData, threadData);
+    // drawLineSegmentEdgeAware(bitmaskData->bitmask, maskIdx, lineData, imageData, threadData);
 
     drawLineSegmentThickness(lineData, imageData, threadData);
 
