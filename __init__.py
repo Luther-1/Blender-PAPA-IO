@@ -306,7 +306,7 @@ class PapaExportMaterialList(bpy.types.UIList):
 
 class PapaExportProperties:
     def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
-                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool,merge:bool, signature:str):
+                        ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool,merge:bool, singleMaterial:bool, signature:str):
         self.__filepath = filepath
         self.__targetObject = target
         self.__isCSG = isCSG
@@ -320,6 +320,7 @@ class PapaExportProperties:
         self.__ignoreHidden = ignoreHidden
         self.__ignoreNoData = ignoreNoData
         self.__merge = merge
+        self.__singleMaterial = singleMaterial
         self.__signature = signature
 
     def getFilepath(self) -> str:
@@ -355,18 +356,28 @@ class PapaExportProperties:
     def isMerge(self):
         return self.__merge
 
+    def isSingleMaterial(self):
+        return self.__singleMaterial
+
     def getSignature(self):
         return self.__signature
 
 class ExportPapaUISettings(PropertyGroup):
 
+    def onUpdateCSG(self, context):
+        properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
+        if properties.isCSG:
+            properties.singleMaterial = False
+
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"
         + " shaded faces which are marked sharp as disconnected",default=True)
     compress: BoolProperty(name="Join Similar Polygons", description="Joins the data of any faces that have the same normals to reduce file size."
         + " Does nothing if the face is smooth shaded",default=True)
+    singleMaterial: BoolProperty(name="Single Material", description="Replaces all materials on the object with a default material", default=True)
     merge: BoolProperty(name="Multi-Mesh", description="Causes selected meshes with the same skeleton to be written to the"
         + " file as one model instead of many. Creates support for >32 bones", default=True)
-    isCSG : BoolProperty(name="Export as CSG",description="Exports the selected mesh as a CSG instead of a unit. Cannot be used if multiple meshes are selected")
+    isCSG : BoolProperty(name="Export as CSG",description="Exports the selected mesh as a CSG instead of a unit. Cannot be used if multiple meshes are selected",
+        update=onUpdateCSG)
 
     shaderOptions = [
         ("1", "textured", "PA shader with just a texture", "", 0),
@@ -435,7 +446,11 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         row.prop(properties,"ignoreHidden")
 
         row = l.row()
-        row.prop(properties,"merge")
+        row.enabled = not properties.isCSG
+        row.prop(properties,"singleMaterial")
+
+        row = l.row()
+        row.prop(properties,"merge") 
 
         row = l.row()
         row.prop(properties,"isCSG")
@@ -505,7 +520,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
-            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.signature)
+            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.singleMaterial, properties.signature)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):

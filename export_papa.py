@@ -22,6 +22,7 @@
 # SOFTWARE.
 
 import bpy
+from types import SimpleNamespace
 from fractions import Fraction
 from mathutils import * # has vectors and quaternions
 from os import path
@@ -308,25 +309,62 @@ def createFaceShadingIslands(mesh, properties):
 
     return faceMap, connectionMap, angleMap
 
-def createFaceMaterialIslands(mesh, properties):
+def findColourFromMaterial(material):
+    if not material.use_nodes:
+        return material.diffuse_color
+
+    nodes = material.node_tree.nodes
+    if "Principled BSDF" in nodes:
+        return nodes["Principled BSDF"].inputs["Base Color"].default_value
+    if "Diffuse BSDF" in nodes:
+        return nodes["Diffuse BSDF"].inputs["Color"].default_value
+
+    return material.diffuse_color
+
+def createMaterialInfoFor(material):
+    obj = SimpleNamespace()
+    obj.name = material.name
+    col = findColourFromMaterial(material)
+    obj.diffuse_color = col
+    return obj
+
+def createEmptyMaterialInfo(mesh):
+    obj = SimpleNamespace()
+    obj.name = mesh.name
+    obj.diffuse_color = [0.8,0.8,0.8,1]
+    return obj
+
+def createMaterialData(mesh, properties):
     # faces that use a material must be laid out sequentially in the data
     # we build a map that maps each material to a list of faces that use it
 
     polygons = mesh.data.polygons
     materialMap = []
-    for _ in mesh.data.materials:
-        materialMap.append([])
-    if len(materialMap) == 0:
-        materialMap.append([])
 
-    for x in range(len(polygons)):
-        face = polygons[x]
-        idx = face.material_index
-        materialMap[idx].append(x)
+    if properties.isSingleMaterial():
+        arr = []
+        for x in range(len(polygons)):
+            arr.append(x)
+        materialMap.append([createEmptyMaterialInfo(mesh),arr])
+        return materialMap
+    
+    for mat in mesh.data.materials:
+        materialMap.append([createMaterialInfoFor(mat),[]])
+    
+    if len(materialMap) == 0:
+        arr = []
+        for x in range(len(polygons)):
+            arr.append(x)
+        materialMap.append([createEmptyMaterialInfo(mesh),arr])
+    else:
+        for x in range(len(polygons)):
+            face = polygons[x]
+            idx = face.material_index
+            materialMap[idx][1].append(x)
 
     if not properties.isCSG():
         for x in range(1,len(materialMap)):
-            if len(materialMap[x]) !=0:
+            if len(materialMap[x][1]) !=0:
                 PapaExportNotifications.getInstance().addNotification("Mesh \"" + mesh.name+  "\" has faces assigned to material at index "
                     + str(x)+" ("+mesh.data.materials[x].name+"). Using materials other than the first will cause team colour flickering.")
 
@@ -570,7 +608,7 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
     # now, create the index buffer
     for x in range(len(materialMap)):
         startCount = currentCount
-        for polyIndex in materialMap[x]:
+        for polyIndex in materialMap[x][1]:
             shadingRegion = shadingMap[polyIndex]
             for tri in triangleTable[polyIndex]: # add all the triangulated faces of the ngon into the index buffer
                 currentCount += 1 # triangle primitive
@@ -591,8 +629,8 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
     materialIndex = 0
     for x in range(len(materialMap)): # traverse the material map in order
         materialData = materialGroupIndices[x]
-        mat = mesh.material_slots[x]
-        nameIndex = papaFile.addString(PapaString(mat.name))
+        materialInfo = materialMap[x][0]
+        nameIndex = papaFile.addString(PapaString(materialInfo.name))
         numPrimitives = materialData[1] - materialData[0]
         startLocation = materialData[0] * 3 
         matGroup = PapaMaterialGroup(nameIndex,materialIndex,startLocation,numPrimitives,PapaMaterialGroup.TRIANGLES)
@@ -611,7 +649,7 @@ def getOrMakeTexture(papaFile:PapaFile, textureMap:dict, path: str):
         textureMap[path] = texIdx
     return texIdx
 
-def createPapaMaterials(papaFile:PapaFile, mesh, properties):
+def createPapaMaterials(papaFile:PapaFile, mesh, materialMap, properties):
     print("Generating Materials...")
     materials = []
     if properties.isCSG():
@@ -627,9 +665,9 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
         shaderNameIndex = papaFile.addString(PapaString(properties.getShader()))
 
         textureMap = {} # maps the path to a texture index
-        for x in range(len(mesh.material_slots)):
-            material = mesh.material_slots[x]
-            exportMaterial = properties.getMaterialForName(material.name)
+        for x in range(len(materialMap)):
+            materialInfo = materialMap[x][0]
+            exportMaterial = properties.getMaterialForName(materialInfo.name)
             textureParams = []
             if shaderLevel >= 0: # diffuse
                 texIdx = getOrMakeTexture(papaFile, textureMap, exportMaterial.getTexturePath())
@@ -645,8 +683,9 @@ def createPapaMaterials(papaFile:PapaFile, mesh, properties):
             materials.append(mat)
     else:
         nameIndex = papaFile.addString(PapaString("solid"))
-        for matSlot in mesh.material_slots:
-            mat = PapaMaterial(nameIndex,[PapaVectorParameter(papaFile.addString(PapaString("DiffuseColor")),Vector(matSlot.material.diffuse_color))],[],[])
+        for matSlot in materialMap:
+            materialInfo = matSlot[0]
+            mat = PapaMaterial(nameIndex,[PapaVectorParameter(papaFile.addString(PapaString("DiffuseColor")),Vector(materialInfo.diffuse_color))],[],[])
             print(mat)
             materials.append(mat)
     return materials
@@ -666,22 +705,8 @@ def ensureMeshPropertiesValid(mesh, properties):
 def ensureMaterialsValid(mesh, properties):
 
     if properties.isCSG():
-        if(len(mesh.material_slots) == 0 or not any(mesh.data.materials)):
+        if len(mesh.material_slots) == 0 or not any(mesh.data.materials):
             raise PapaBuildException("No materials present on CSG")
-    else:
-        if(len(mesh.material_slots) == 0): # guarantee at least one material, doesn't matter for units
-            mesh.data.materials.append(bpy.data.materials.new(name=mesh.name+"_implicit"))
-            PapaExportNotifications.getInstance().addNotification({"INFO"},"No materials on object \""+mesh.name+"\". New material generated: "+mesh.name+"_implicit")
-        elif not any(mesh.data.materials):# there are material slots, but no faces are assigned to materails that exist.
-            mesh.data.materials[0] = bpy.data.materials.new(name=mesh.name+"_implicit")
-            for poly in mesh.data.polygons:
-                poly.material_index = 0
-            PapaExportNotifications.getInstance().addNotification({"INFO"},"No materials on object \""+mesh.name+"\". New material generated: "+mesh.name+"_implicit")
-    # remove any materials that are unused
-    for i in range(len(mesh.data.materials)-1,0,-1):
-        if not mesh.data.materials[i]:
-            mesh.data.materials.pop(index=i)
-            PapaExportNotifications.getInstance().addNotification({"INFO"},"Deleted unset material on mesh \""+mesh.name+"\" in slot "+str(i))
 
 def isDefaultRotation(quat):
     # (1,0,0,0)
@@ -872,7 +897,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
     # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
     shadingMap, connectionMap, angleMap = createFaceShadingIslands(mesh, properties) 
-    materialMap = createFaceMaterialIslands(mesh, properties) # materialIndex -> list of polygons that use that material
+    materialMap = createMaterialData(mesh, properties) # [materialIndex][dataIdx (0 for material info, 1 for list of polygons that use that material)]
 
     uvMap = computeUVData(mesh, properties) # [mapIndex (0 for main UV, 1 for shadow map)][face][vertex] -> UV coord
  
@@ -899,7 +924,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     # create the list of materials
     # the traversal of all materials is always guaranteed to be the same order as in blender
     # i.e. the 4th material and the 4th material group both map to the 4th Blender Material
-    papaMaterials = createPapaMaterials(papaFile, mesh, properties)
+    papaMaterials = createPapaMaterials(papaFile, mesh, materialMap, properties)
     for mat in papaMaterials:
         papaFile.addMaterial(mat)
 
