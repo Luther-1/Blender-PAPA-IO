@@ -634,7 +634,7 @@ class SetupTextureTemplate(bpy.types.Operator):
         return {'FINISHED'}
 
     def setupObject(self, obj):
-        loc, rot, sca = obj.matrix_world.decompose()
+        loc, rot, sca = obj.matrix_local.decompose()
 
         epsilon = 0.0001
         if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
@@ -719,7 +719,7 @@ class SetupTextureInitial(bpy.types.Operator):
         return wm.invoke_props_dialog(self)
 
     def setupObject(self, obj, texSize):
-        loc,rot,sca = obj.matrix_world.decompose()
+        loc,rot,sca = obj.matrix_local.decompose()
 
         epsilon = 0.0001
         if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
