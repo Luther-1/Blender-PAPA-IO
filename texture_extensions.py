@@ -1036,19 +1036,54 @@ class BakeSelectedObjects(bpy.types.Operator):
     bl_idname = "bake_objects.papa_utils"
     bl_label = "PAPA Bake Objects"
     bl_options = {'REGISTER','UNDO'}
-
-    def alterUvs(self, mesh, idx, move):
+    
+    def alterUvs(self, mesh, selectedIndex, newIndex):
+        move = 10
 
         bpy.ops.object.mode_set(mode='OBJECT')
         uvData = mesh.data.uv_layers[0].data
-        for poly in mesh.data.polygons:
-            if poly.material_index == idx:
-                for loopIdx in poly.loop_indices:
-                    uvData[loopIdx].uv[0]+=move
+        # reset previous UVs
+        if selectedIndex != None:
+            for poly in mesh.data.polygons:
+                if poly.material_index != selectedIndex:
+                    for loopIdx in poly.loop_indices:
+                        uvData[loopIdx].uv[0]-=move
+
+        # select new UVs
+        if newIndex != None:
+            for poly in mesh.data.polygons:
+                if poly.material_index != newIndex:
+                    for loopIdx in poly.loop_indices:
+                        uvData[loopIdx].uv[0]+=move
+
+        
+    def getParamOrDefault(self, stage, paramName, _default):
+        return stage[paramName] if paramName in stage else _default
+
+    def materialIndex(self, mesh, name):
+        bpy.ops.object.mode_set(mode='OBJECT')
+        for x in range(len(mesh.data.materials)):
+            material = mesh.data.materials[x]
+            print(material, material.name)
+            if material and material.name == name:
+                return x
+        return None
     
     def execute(self, context):
         AOMesh = None
         success = 0
+
+        total = 0
+        current = 0
+        for obj in bpy.context.selected_objects:
+            try:
+                shouldBake = obj[TEX_SHOULD_BAKE_INT]
+                if shouldBake:
+                    total += 1
+            except:
+                pass
+        
+        bpy.context.window_manager.progress_begin(0, total)
         
         for obj in bpy.context.selected_objects:
             try:
@@ -1056,12 +1091,16 @@ class BakeSelectedObjects(bpy.types.Operator):
             except:
                 continue
 
+            bpy.context.window_manager.progress_update(current)
+            current += 1
+
             if shouldBake:
                 try:
                     config = Configuration.getDataForObject(obj)
                     shouldSupersample = config["bake"]["supersample"]
+                    stages = config["bake"]["stages"]
                 except:
-                    self.report({"ERROR"}, "Texture config file is missing supersample data for "+obj.name)
+                    self.report({"ERROR"}, "Texture config file is missing supersample or stages data for "+obj.name)
                     return {"CANCELLED"}
 
                 tex = getOrCreateImage(obj[TEX_NAME_STRING])
@@ -1072,21 +1111,39 @@ class BakeSelectedObjects(bpy.types.Operator):
                 
                 selectObject(obj)
 
-                if getObjectType(obj) == OBJ_TYPES.AO: 
-                    bpy.ops.object.bake(type="AO",margin=128)
-                    self.alterUvs(obj,0,1) # TODO make this not hard coded
-                    if shouldSupersample:
-                        tex.scale(texSize[0],texSize[1])
-                    bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=0,use_clear=False)
-                    self.alterUvs(obj,0,-1)
-                    AOMesh = obj
-                else:
-                    bpy.ops.object.bake(pass_filter={"COLOR"},type="DIFFUSE",margin=128)
-                    if shouldSupersample:
-                        tex.scale(texSize[0],texSize[1])
+                isSupersampled = shouldSupersample
+                selectedUvIndex = None
+
+                for stage in stages:
+                    op = stage["operation"]
+                    if op == "BAKE":
+                        bakeType = stage["type"]
+                        pass_filter = set(self.getParamOrDefault(stage, "pass_filter", []))
+                        margin = self.getParamOrDefault(stage, "margin", 16)
+                        margin_type = self.getParamOrDefault(stage, "margin_type", "ADJACENT_FACES")
+                        use_clear = self.getParamOrDefault(stage, "use_clear", False)
+                        bpy.ops.object.bake(type=bakeType,pass_filter=pass_filter,margin=margin,margin_type=margin_type,use_clear=use_clear)
+                    elif op == "SUPERSAMPLE":
+                        value = stage["value"]
+                        if value:
+                            tex.scale(texSize[0] * 2,texSize[1] * 2)
+                        else:
+                            tex.scale(texSize[0],texSize[1])
+                        isSupersampled = value
+                    elif op == "SELECT_UVS":
+                        idx = self.materialIndex(obj, stage["material"])
+                        if idx == None:
+                            self.report({"ERROR"},"Cannot find material for name " + str(stage["material"]))
+                            continue
+                        self.alterUvs(obj, selectedUvIndex, idx)
+                        selectedUvIndex = idx
+
+                self.alterUvs(obj, selectedUvIndex, None)
+                if isSupersampled:
+                    tex.scale(texSize[0],texSize[1])
                 
 
-                if "bake" in config and "magic_pixel" in config["bake"]:
+                if "magic_pixel" in config["bake"]:
                     bakeInfo = config["bake"]
                     magicPixel = bakeInfo["magic_pixel"]
                     magicPixelLoc = magicPixel["location"]
@@ -1112,8 +1169,9 @@ class BakeSelectedObjects(bpy.types.Operator):
                 
                 success+=1
 
+        bpy.context.window_manager.progress_end()
+
         self.report({"INFO"},"Successfully baked "+str(success)+" texture(s).")
-        print("Report")
         if AOMesh:
             selectObject(AOMesh)
             # in case they have a default setting
@@ -1123,7 +1181,7 @@ class BakeSelectedObjects(bpy.types.Operator):
     def invoke(self, context, event):
         self.imageName = None
         setParamatersForOperator(self)
-        val =  self.execute(context)
+        val = self.execute(context)
         print("Finished")
         return val
 

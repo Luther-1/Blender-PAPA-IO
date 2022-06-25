@@ -94,7 +94,17 @@
         }
       },
       "bake": {
-        "supersample": false
+        "supersample": false,
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 128,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": true
+          }
+        ]
       }
     },
     "material": {
@@ -142,7 +152,17 @@
         }
       },
       "bake": {
-        "supersample": false
+        "supersample": false,
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 128,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": true
+          }
+        ]
       }
     },
     "mask": {
@@ -189,7 +209,17 @@
         }
       },
       "bake": {
-        "supersample": false
+        "supersample": false,
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 128,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": true
+          }
+        ]
       }
     },
     "ao": {
@@ -222,7 +252,30 @@
         }
       },
       "bake": {
-        "supersample": true
+        "supersample": true,
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "AO",
+            "margin": 128
+          },
+          {
+            "operation": "SUPERSAMPLE",
+            "value": false
+          },
+          {
+            "operation": "SELECT_UVS",
+            "material": "ao_bake_ignore"
+          },
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 0,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": false
+          }
+        ]
       }
     },
     "edge_highlight": {
@@ -371,7 +424,17 @@
         "magic_pixel": {
           "location": [1.0,1.0],
           "color": [255,0,255,255]
-        }
+        },
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 128,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": true
+          }
+        ]
       }
     },
     "material": {
@@ -430,7 +493,17 @@
         }
       },
       "bake": {
-        "supersample": false
+        "supersample": false,
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 128,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": true
+          }
+        ]
       }
     },
     "mask": {
@@ -475,7 +548,17 @@
         }
       },
       "bake": {
-        "supersample": false
+        "supersample": false,
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 128,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": true
+          }
+        ]
       }
     },
     "ao": {
@@ -512,7 +595,30 @@
         "magic_pixel": {
           "location": [1.0,1.0],
           "color": [255,255,255,255]
-        }
+        },
+        "stages": [
+          {
+            "operation": "BAKE",
+            "type": "AO",
+            "margin": 128
+          },
+          {
+            "operation": "SUPERSAMPLE",
+            "value": false
+          },
+          {
+            "operation": "SELECT_UVS",
+            "material": "ao_bake_ignore"
+          },
+          {
+            "operation": "BAKE",
+            "type": "DIFFUSE",
+            "pass_filter": ["COLOR"],
+            "margin": 0,
+            "margin_type": "ADJACENT_FACES",
+            "use_clear": false
+          }
+        ]
       }
     },
     "edge_highlight": {
