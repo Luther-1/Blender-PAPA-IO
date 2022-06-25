@@ -1431,7 +1431,7 @@ class CalulateEdgeSharp(bpy.types.Operator):
         edges = obj.data.edges
         polygons = obj.data.polygons
         for edge in edges:
-            faces = edgeKeyToFaces[edge.key]
+            faces = edgeKeyToFaces.get(edge.key,[])
             if len(faces) >= 2:
                 v1 = Vector(polygons[faces[0]].normal)
                 v2 = Vector(polygons[faces[1]].normal)
