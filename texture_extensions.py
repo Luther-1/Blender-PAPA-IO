@@ -579,6 +579,8 @@ def setupMaterialsForObject(obj, texture):
             continue
         relationInfo = assignInfo[objType]
         sourceObject = findObject(obj[OBJ_NAME_STRING], objType.upper())
+        if not sourceObject:
+            continue
         sourcePolygons = sourceObject.data.polygons
         sourceMaterials = sourceObject.data.materials
 
@@ -760,15 +762,6 @@ class SetupTextureComplete(bpy.types.Operator):
     bl_idname = "setup_bake.papa_utils"
     bl_label = "PAPA Setup Texture Complete"
     bl_options = {'UNDO'}
-
-    def findDiffuse(self, context):
-        for obj in bpy.context.selected_objects:
-            if getObjectType(obj) == OBJ_TYPES.DIFFUSE:
-                self.__builtObjects.append(obj)
-                return True
-    
-        self.report({'ERROR'},"Selected object must have been previously set up using Setup Texture Initial")
-        return False
 
     def setupObjectBake(self, obj, texSize, name):
         # create the material object
