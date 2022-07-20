@@ -638,11 +638,11 @@ class SetupTextureTemplate(bpy.types.Operator):
 
         epsilon = 0.0001
         if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
-            self.report({'ERROR'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
+            self.report({'WARNING'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
         if abs(rot[0]-1) > epsilon or abs(rot[1]) > epsilon or abs(rot[2]) > epsilon or abs(rot[3]) > epsilon:
-            self.report({'ERROR'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
+            self.report({'WARNING'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
         if abs(loc[0]) > epsilon or abs(loc[1]) > epsilon or abs(loc[2]) > epsilon:
-            self.report({'ERROR'},obj.name +" has a location transform. Use of non applied transformations is discouraged.")
+            self.report({'WARNING'},obj.name +" has a location transform. Use of non applied transformations is discouraged.")
 
         setupMaterialsForObject(obj, None)
 
@@ -723,11 +723,11 @@ class SetupTextureInitial(bpy.types.Operator):
 
         epsilon = 0.0001
         if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
-            self.report({'ERROR'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
+            self.report({'WARNING'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
         if abs(rot[0]-1) > epsilon or abs(rot[1]) > epsilon or abs(rot[2]) > epsilon or abs(rot[3]) > epsilon:
-            self.report({'ERROR'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
+            self.report({'WARNING'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
         if abs(loc[0]) > epsilon or abs(loc[1]) > epsilon or abs(loc[2]) > epsilon:
-            self.report({'ERROR'},obj.name +" has a location transform. Use of non applied transformations is discouraged.")
+            self.report({'WARNING'},obj.name +" has a location transform. Use of non applied transformations is discouraged.")
 
         texname = obj[OBJ_NAME_STRING]+"_diffuse_bake"
         diffuseTex = getOrCreateImage(obj[OBJ_NAME_STRING]+"_diffuse_bake",texSize)
