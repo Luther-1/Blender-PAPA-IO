@@ -640,7 +640,7 @@ class SetupTextureTemplate(bpy.types.Operator):
 
         epsilon = 0.0001
         if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
-            self.report({'WARNING'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
+            self.report({'WARNING'},obj.name +" has a scale transform! Make sure that your UV was unwrapped with this transform applied")
         if abs(rot[0]-1) > epsilon or abs(rot[1]) > epsilon or abs(rot[2]) > epsilon or abs(rot[3]) > epsilon:
             self.report({'WARNING'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
         if abs(loc[0]) > epsilon or abs(loc[1]) > epsilon or abs(loc[2]) > epsilon:
@@ -725,7 +725,7 @@ class SetupTextureInitial(bpy.types.Operator):
 
         epsilon = 0.0001
         if sca[0] != 1 or sca[1] != 1 or sca[2] != 1:
-            self.report({'WARNING'},obj.name +" has a scale transform! Make sure that yor UV was unwrapped with this transform applied")
+            self.report({'WARNING'},obj.name +" has a scale transform! Make sure that your UV was unwrapped with this transform applied")
         if abs(rot[0]-1) > epsilon or abs(rot[1]) > epsilon or abs(rot[2]) > epsilon or abs(rot[3]) > epsilon:
             self.report({'WARNING'},obj.name +" has a rotation transform. Use of non applied transformations is discouraged.")
         if abs(loc[0]) > epsilon or abs(loc[1]) > epsilon or abs(loc[2]) > epsilon:
@@ -1645,7 +1645,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
                 self.report({"ERROR"}, "Configuration for edge highlights requires lineThickness, blurAmount, and multiplier to be set")
                 return
         elif len(lineThickness) != len(blurAmount) or len(lineThickness) != len(multiplier):
-            self.report({"ERROR"}, "One of lineThickness, blurAMount, or multiplier is not the same length as the others")
+            self.report({"ERROR"}, "One of lineThickness, blurAmount, or multiplier is not the same length as the others")
             return
         else:
             self.numPasses = len(lineThickness)
