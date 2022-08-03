@@ -2448,7 +2448,7 @@ def getConfigurations(self, context):
     return Configuration.getAvailableConfigurations()
 
 class SetConfiguration(bpy.types.Operator):
-    """Generates and then saves the needed textures for a PA model to the specified directory"""
+    """Loads the specified subconfiguration from the configuration file"""
     bl_idname = "set_configuration.papa_utils"
     bl_label = "PAPA Set Configuration"
     bl_options = {'REGISTER'}
