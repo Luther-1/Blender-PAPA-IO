@@ -1639,6 +1639,12 @@ class TweakEdgeHighlights(bpy.types.Operator):
             self.islandThreshold = obj[EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT]
         if EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT in obj:
             self.islandFactor = obj[EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT]
+        if EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY in obj:
+            lineThickness = obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY]
+        if EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY in obj:
+            blurAmount = obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY]
+        if EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY in obj:
+            multiplier = obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY]
 
         if lineThickness == None or blurAmount == None or multiplier == None:
             if not (lineThickness == None and blurAmount == None and multiplier == None):
@@ -1649,7 +1655,6 @@ class TweakEdgeHighlights(bpy.types.Operator):
             return
         else:
             self.numPasses = len(lineThickness)
-
 
         self.updateUIInitial(obj, lineThickness, blurAmount, multiplier)
 
