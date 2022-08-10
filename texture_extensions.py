@@ -47,6 +47,7 @@ EDGE_HIGHLIGHT_TAPER_MIN_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_TAPER_MIN"
 EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_TAPER_FACTOR"
 EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_ISLAND_THRESHOLD"
 EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT = "__PAPA_IO_EDGE_HIGHLIGHTS_ISLAND_FACTOR"
+EDGE_HIGHLIGHT_CLEAR_BOOL = "__PAPA_IO_EDGE_HIGHLIGHTS_CLEAR"
 DISTANCE_FIELD_TEXTURE = "__PAPA_IO_DISTANCE_FIELD"
 DISTANCE_FIELD_MATERIAL = "__PAPA_IO_DISTANCE_FIELD_MATERIAL"
 DISTANCE_FIELD_TEXEL_INFO_FLOAT = "__PAPA_IO_DISTANCE_FIELD_TEXEL_INFO"
@@ -1516,6 +1517,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
     taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.5)
     islandThreshold: FloatProperty(name="Island Scale Threshold",description="Multiplier for when to start scaling lines due to small faces", min=0, max=64, default=0.5)
     islandFactor: FloatProperty(name="Island Scale Factor",description="Multiplier for how fast to scale down lines on small faces", min=0, max=4, default=0)
+    clear: BoolProperty(name="Clear Image",description="Whether or not to clear the image", default=True)
 
     numPasses: IntProperty(name="Passes",description="The number of passes to perform",min=1,max=8,default=1)
 
@@ -1606,7 +1608,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         
 
         self.processObject(obj, tex, lineThickness, blurAmount, multiplier,
-                                        self.minTaper, self.maxTaper, self.taperFactor, self.islandThreshold, self.islandFactor)
+                                        self.minTaper, self.maxTaper, self.taperFactor, self.islandThreshold, self.islandFactor, self.clear)
 
         self.lastNumPasses = self.numPasses
 
@@ -1645,6 +1647,8 @@ class TweakEdgeHighlights(bpy.types.Operator):
             blurAmount = obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY]
         if EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY in obj:
             multiplier = obj[EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY]
+        if EDGE_HIGHLIGHT_CLEAR_BOOL in obj:
+            self.clear = obj[EDGE_HIGHLIGHT_CLEAR_BOOL]
 
         if lineThickness == None or blurAmount == None or multiplier == None:
             if not (lineThickness == None and blurAmount == None and multiplier == None):
@@ -1664,6 +1668,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
         l = self.layout
 
         collection = self.settings
+
+        row = l.row()
+        row.prop(self,"clear")
 
         row = l.row()
         row.prop(self,"numPasses")
@@ -1864,7 +1871,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         return islands, islandMap
 
 
-    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper, islandThreshold, islandFactor):
+    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper, islandThreshold, islandFactor, clear):
         # the following are converted into arrays of structs in C
         # lineData: array of floats [num_lines, mask_idx, [start, end, thickness, blur...]...] ends when start has a value of -infinity
         # triangulatedUVData: ordered list of float indices as follows [num_triangles, <triangulated UV data>...] ends when num_triangles has a value of -infinity
@@ -1882,6 +1889,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         obj[EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT] = minTaper
         obj[EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT] = islandThreshold
         obj[EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT] = islandFactor
+        obj[EDGE_HIGHLIGHT_CLEAR_BOOL] = clear
         self.saveProperties(thickness, blur, multiplier)
 
         islands, islandMap = self.getIslandMap(obj)
@@ -1913,12 +1921,15 @@ class TweakEdgeHighlights(bpy.types.Operator):
         imgHeight = tex.size[1]
         imgSize = imgWidth * imgHeight
         imgDataSize = imgSize * 4
-        if imgDataSize & (imgDataSize-1) == 0: # test if the number of values is a power of two
-            outData = array('f',[0.0])
-            for _ in range(int(log2(imgDataSize))):
-                outData.extend(outData)
+        if clear:
+            if imgDataSize & (imgDataSize-1) == 0: # test if the number of values is a power of two
+                outData = array('f',[0.0])
+                for _ in range(int(log2(imgDataSize))):
+                    outData.extend(outData)
+            else:
+                outData = array('f',[0.0] * imgDataSize)
         else:
-            outData = array('f',[0.0] * imgDataSize)
+            outData = array('f',tex.pixels[:])
         outPointer = outData.buffer_info()[0]
 
         extraData = array('f',multiplier)
@@ -1932,8 +1943,8 @@ class TweakEdgeHighlights(bpy.types.Operator):
                                                 ctypes.c_int(dataLen), ctypes.c_int(extraPointerLength),
                                                 ctypes.c_int(imgWidth), ctypes.c_int(imgHeight),
                                                 ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
-
-        tex.pixels = outData
+        
+        tex.pixels[:] = outData
         tex.pack()
 
 class TweakDistanceField(bpy.types.Operator):

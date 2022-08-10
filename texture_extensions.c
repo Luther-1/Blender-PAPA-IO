@@ -834,7 +834,10 @@ void copyTempToDst(ImageData* imageData, float* dst) {
         dst[i + 0] = 1.0f;
         dst[i + 1] = 1.0f;
         dst[i + 2] = 1.0f;
-        dst[i + 3] = scratch[sIdx];
+        float currentAlpha = dst[i + 3];
+        float targetAlpha = scratch[sIdx];
+
+        dst[i + 3] = __max( currentAlpha, targetAlpha );
     }
 }
 
