@@ -373,7 +373,8 @@ int pixelSetMaskBoundary(char* buf, int x, int y, int w, int h) {
 }
 
 float gaussian(float x, float fac) {
-    return 1 / (sqrt(2.0*3.1415926)) * exp(-2*(x*x)/(fac*fac));
+    float fac2 = fac*fac;
+    return 1 / (sqrt( 2.0f * 3.1415926f * fac2 )) * exp( -2.0f * (x*x) / (fac2) );
 }
 
 float* buildKernel(int kw, float blur) {
