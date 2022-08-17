@@ -900,7 +900,8 @@ void generateEdgeHighlights( float** lineData, float* tuvData, float* multiplier
 
 // tuv data is triangulated UVs which act as a mask to determine which pixels can be written to
 // uvData is the lines that represent all lines to draw distance field from
-void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen, int width, int height, int target, float* dst, float* retVal ) {
+void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen, float* ignoreData, int ignoreLen,
+                            int width, int height, int target, float* dst, float* retVal ) {
 
     if(uvLen == 0 || tuvLen == 0 || width == 0 || height == 0) {
         return;
@@ -1026,6 +1027,28 @@ void generateDistanceField( float* uvData, int uvLen, float* tuvData, int tuvLen
             float val = 1.0 - pixelDiff * (float)mapping[y * width + x];
             setPixel( dst, x, y, width, val, val, val, 1.0);
         }
+    }
+
+    // clear ignored regions
+    // this is done this way to keep the tapering effect which is seen in stock PA textures
+    float float4[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    EmbeddedWriteData writeData2;
+    writeData2.writeFunc = writeFourFloat;
+    writeData2.argData = float4;
+
+    #pragma omp parallel for
+    for( int i=0; i<ignoreLen; i+=6 ) {
+        int x0 = abs((int)round(ignoreData[i] * fwidth - subtract));
+        int y0 = abs((int)round(ignoreData[i + 1] * fheight - subtract));
+        int x1 = abs((int)round(ignoreData[i + 2] * fwidth - subtract));
+        int y1 = abs((int)round(ignoreData[i + 3] * fheight - subtract));
+        int x2 = abs((int)round(ignoreData[i + 4] * fwidth - subtract));
+        int y2 = abs((int)round(ignoreData[i + 5] * fheight - subtract));
+        
+        drawTriangle( (void*)dst, x0, y0, x1, y1, x2, y2, width, height, float4, writeFourFloat );
+        drawLine( (void*)dst, x0, y0, x1, y1, width, height, &writeData2, write3x3Plus );
+        drawLine( (void*)dst, x1, y1, x2, y2, width, height, &writeData2, write3x3Plus );
+        drawLine( (void*)dst, x2, y2, x0, y0, width, height, &writeData2, write3x3Plus );
     }
 
     free(openList);

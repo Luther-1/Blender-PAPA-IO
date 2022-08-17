@@ -2016,7 +2016,8 @@ class TweakDistanceField(bpy.types.Operator):
     def getUvsTriangulated(self, mesh):
         selectObject(mesh)
         bpy.ops.object.mode_set(mode='OBJECT')
-        uvs = [] # [x1,y1,x2,y2,...]
+        uvs1 = [] # [x1,y1,x2,y2,...]
+        uvs2 = []
 
         uv = mesh.data.uv_layers[0].data
 
@@ -2027,9 +2028,14 @@ class TweakDistanceField(bpy.types.Operator):
             if polygons[tri.polygon_index].material_index == 0:
                 for x in range(3):
                     uvData = uv[tri.loops[x]].uv
-                    uvs.append(uvData[0])
-                    uvs.append(uvData[1])
-        return uvs
+                    uvs1.append(uvData[0])
+                    uvs1.append(uvData[1])
+            else:
+                for x in range(3):
+                    uvData = uv[tri.loops[x]].uv
+                    uvs2.append(uvData[0])
+                    uvs2.append(uvData[1])
+        return uvs1, uvs2
                 
 
     def processObject(self, obj, tex, matData, recalculate):
@@ -2061,15 +2067,21 @@ class TweakDistanceField(bpy.types.Operator):
                 self.report({"ERROR"},"Model has no freestyle marked edges.")
                 return
 
-            tuvs = array('f',self.getUvsTriangulated(obj))
+            tuvs, ignore = self.getUvsTriangulated(obj)
+            tuvs = array('f',tuvs)
+            ignore = array('f',ignore)
             tuvPointer = tuvs.buffer_info()[0]
             numTuvCoords = len(tuvs)
+            ignorePointer = ignore.buffer_info()[0]
+            numIgnore = len(ignore)
 
             # note: image is saved to SRGB, but this value is linear. it is still WYSIWYG for the shader
             decay = 170 # hard coded, use texelinfo to change the way it looks
 
             textureLibrary.generateDistanceField(ctypes.cast(uvPointer,ctypes.POINTER(ctypes.c_float)),
-                    ctypes.c_int(numUvCoords), ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numTuvCoords),
+                    ctypes.c_int(numUvCoords), 
+                    ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numTuvCoords),
+                    ctypes.cast(ignorePointer,ctypes.POINTER(ctypes.c_float)), ctypes.c_int(numIgnore),
                     ctypes.c_int(imgWidth), ctypes.c_int(imgHeight), ctypes.c_int(decay), 
                     ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)), ctypes.byref(tInfo))
         
@@ -2530,8 +2542,8 @@ if path.exists(libPath):
                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateEdgeHighlights.resType = None
 
-        textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                ctypes.c_int, ctypes.POINTER(ctypes.c_float))
+        textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int,
+                ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateDistanceField.resType = None
 
         textureLibrary.compositeFinal.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float),ctypes.POINTER(ctypes.c_float),
