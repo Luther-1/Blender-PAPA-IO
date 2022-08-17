@@ -568,9 +568,10 @@ void copyAndClearThreadScratch(BitmaskData* BitmaskData, unsigned long long mask
             int idx = IMAGE_INDEX(x,y,width);
             if(dilatedBitmask[idx] & maskIdx) {
                 // #pragma omp atomic write
-                float val = src[idx] * multiplier;
-                float max = __max(dst[idx], val);
-                dst[idx] = CLAMP(max, 0.0, 1.0);
+                float newVal = src[idx] * multiplier;
+                newVal = CLAMP(newVal, 0.0, 1.0);
+                float val = dst[idx];
+                dst[idx] = newVal + val * (1.0f - newVal);
             }
             src[idx] = 0;
         }
