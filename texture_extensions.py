@@ -356,8 +356,8 @@ def createDistanceFieldMaterial(name:str, blenderImage):
     bsdf.inputs["Base Color"].default_value = (1,1,1,1)
     
     return mat
-        
-def getOrCreateImage(imageName, size=-1):
+
+def getOrCreateImage(imageName, size=-1, color=(0.0,0.0,0.0,1.0)):
     try:
         img = bpy.data.images[imageName]
         if size!=-1 and img.size != size**2:
@@ -366,7 +366,8 @@ def getOrCreateImage(imageName, size=-1):
     except:
         if size==-1:
             raise
-        img = bpy.data.images.new(imageName, size, size,alpha=True)
+        img = bpy.ops.image.new(name=imageName, width=size, height=size, color=color)
+        img = bpy.data.images[imageName]
         img.pack() # by packing the data, we can edit the colour space name
         return img
 
@@ -886,7 +887,7 @@ class SetupTextureComplete(bpy.types.Operator):
 
         target = None
         
-        distanceFieldTex = getOrCreateImage(name+"_distance_field",texSize)
+        distanceFieldTex = getOrCreateImage(name+"_distance_field",texSize, color=(1.0, 1.0, 1.0, 1.0))
         target = edgeObj
         if not target:
             target = ao
