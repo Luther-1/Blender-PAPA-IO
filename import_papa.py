@@ -48,16 +48,16 @@ def load_papa(properties, context):
             if not texture:
                 continue # some textures may be omitted by the importer as to keep indices correct
             name = papaFile.getString(texture.getNameIndex())
-            createImageFromData(name,texture.getImageData(),texture.getWidth(),texture.getHeight(), texture.getSRGB(), texture.getFilepath(), texMap=textureMap)
+            createImageFromData(name, texture.getImageData(),texture.getWidth(),texture.getHeight(), texture.getSRGB(), texture.getFilepath(), texMap=textureMap)
 
     # try to import the textures in the same directory that match to the model, if the files are found, override the material with it
     importedTexture = None
     importedMask = None
     importedMaterial = None
     if(papaFile.getNumModels() > 0):
-        importedTexture = extractTexture(filepath,"_diffuse", textureMap, properties)
-        importedMask = extractTexture(filepath,"_mask", textureMap, properties) if importedTexture else None # skip if we missed the texture
-        importedMaterial = extractTexture(filepath,"_material", textureMap, properties) if importedMask else None # skip if we missed the mask or the texture
+        importedTexture = extractTexture(filepath,"_diffuse", textureMap, False, properties)
+        importedMask = extractTexture(filepath,"_mask", textureMap, True, properties) if importedTexture else None # skip if we missed the texture
+        importedMaterial = extractTexture(filepath,"_material", textureMap, True, properties) if importedMask else None # skip if we missed the mask or the texture
 
     # Import each model in the file
     if(papaFile.getNumModels() > 0):
@@ -424,7 +424,7 @@ def shadeSmoothFromData(blenderMesh, iBuffer: PapaIndexBuffer, vBuffer: PapaVert
 def vectorsEqualWithinTolerance(v1, v2, tolerance):
     return abs(v1[0]-v2[0]) <= tolerance and abs(v1[1]-v2[1]) <= tolerance and abs(v1[2]-v2[2]) <= tolerance
 
-def extractTexture(filepath, append, textureMap, properties):
+def extractTexture(filepath, append, textureMap, useAlpha, properties):
     idx = filepath.rfind('.')
     if(idx==-1):
         idx = len(filepath)
@@ -446,7 +446,8 @@ def extractTexture(filepath, append, textureMap, properties):
     if(textureFile.getNumTextures()>0):
         texture = textureFile.getTexture(0) # only import the first
         name = textureFile.getString(texture.getNameIndex())
-        return createImageFromData(name,texture.getImageData(),texture.getWidth(),texture.getHeight(), texture.getSRGB(), texture.getFilepath(), texMap=textureMap)
+        return createImageFromData(name,texture.getImageData(),texture.getWidth(),texture.getHeight(), texture.getSRGB(),
+                                    texture.getFilepath(), useAlpha=useAlpha, texMap=textureMap)
     return None
 
 def applyTexturePathsFromData(blenderMaterial, diffuse:PapaTexture, mask:PapaTexture, material:PapaTexture, normal:PapaTexture):
@@ -684,15 +685,6 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         texImage.image = diffuse
         texImage.location.x = bsdf.location.x - 1050
         texImage.location.y = bsdf.location.y - 400
-
-        # Contradicatory to the documentation, Blender will premultiply the alpha unless the alpha channel is used
-        discard = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
-        discard.label = "Discard"
-        discard.hide = True
-        discard.inputs[1].default_value = 0
-        blenderMaterial.node_tree.links.new(discard.inputs[0], texImage.outputs["Alpha"])
-        discard.location.x = bsdf.location.x - 800
-        discard.location.y = bsdf.location.y - 475
 
         # add mask
         texMask = blenderMaterial.node_tree.nodes.new("ShaderNodeTexImage")
@@ -954,12 +946,15 @@ def getCollection(context, item):
     return context.scene.collection
 
 # https://blender.stackexchange.com/questions/643/is-it-possible-to-create-image-data-and-save-to-a-file-from-a-script
-def createImageFromData(imageName, pixels, width, height, srgb, filepath, texMap = None): # assumed data is in RGBA byte array (as floats)
+def createImageFromData(imageName, pixels, width, height, srgb, filepath, texMap = None, useAlpha = True): # assumed data is in RGBA byte array (as floats)
     img = bpy.data.images.new(imageName, width, height,alpha=True)
     img.pixels = pixels
     img.pack() # by packing the data, we can edit the colour space name
     if not srgb:
         img.colorspace_settings.name = "Linear"
+    if not useAlpha:
+        print("AAAAAAAAA")
+        img.alpha_mode = "NONE"
     img[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION] = filepath
     if texMap != None:
         texMap[imageName] = img # workaround for name clashes and 63 character name limit
