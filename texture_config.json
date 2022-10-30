@@ -99,7 +99,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 128,
             "margin_type": "EXTEND",
             "use_clear": true
@@ -157,7 +159,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 128,
             "margin_type": "EXTEND",
             "use_clear": true
@@ -214,7 +218,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 128,
             "margin_type": "EXTEND",
             "use_clear": true
@@ -270,7 +276,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 0,
             "margin_type": "EXTEND",
             "use_clear": false
@@ -281,6 +289,23 @@
     "edge_highlight": {
       "light_material": "light_material",
       "dark_material": "dark_material"
+    },
+    "PAPA Tweak Edge Highlights": {
+      "Width": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "Blur": [
+        0.5,
+        2.5,
+        5.0
+      ],
+      "Multiplier": [
+        1.0,
+        1.0,
+        1.0
+      ]
     }
   },
   "Legion": {
@@ -422,14 +447,24 @@
       "bake": {
         "supersample": false,
         "magic_pixel": {
-          "location": [1.0,1.0],
-          "color": [255,0,255,255]
+          "location": [
+            1.0,
+            1.0
+          ],
+          "color": [
+            255,
+            0,
+            255,
+            255
+          ]
         },
         "stages": [
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 128,
             "margin_type": "EXTEND",
             "use_clear": true
@@ -498,7 +533,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 128,
             "margin_type": "EXTEND",
             "use_clear": true
@@ -553,7 +590,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 128,
             "margin_type": "EXTEND",
             "use_clear": true
@@ -593,8 +632,16 @@
       "bake": {
         "supersample": true,
         "magic_pixel": {
-          "location": [1.0,1.0],
-          "color": [255,255,255,255]
+          "location": [
+            1.0,
+            1.0
+          ],
+          "color": [
+            255,
+            255,
+            255,
+            255
+          ]
         },
         "stages": [
           {
@@ -613,7 +660,9 @@
           {
             "operation": "BAKE",
             "type": "DIFFUSE",
-            "pass_filter": ["COLOR"],
+            "pass_filter": [
+              "COLOR"
+            ],
             "margin": 0,
             "margin_type": "EXTEND",
             "use_clear": false
@@ -624,6 +673,23 @@
     "edge_highlight": {
       "light_material": "light_material",
       "dark_material": "dark_material"
+    },
+    "PAPA Tweak Edge Highlights": {
+      "Width": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "Blur": [
+        0.5,
+        2.5,
+        5.0
+      ],
+      "Multiplier": [
+        1.0,
+        1.0,
+        1.0
+      ]
     }
   }
 }
