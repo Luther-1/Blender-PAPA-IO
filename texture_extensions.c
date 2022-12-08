@@ -185,6 +185,9 @@ void freeBrushData(BrushData* data) {
 }
 
 void writeFourFloat(int x, int y, int w, int h, void* _data, void* _dst) {
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
+        return;
+    }
     
     float* dst = (float*)_dst;
     float* data = (float*)_data;
@@ -197,6 +200,10 @@ void writeFourFloat(int x, int y, int w, int h, void* _data, void* _dst) {
 }
 
 void writeSingleFloat(int x, int y, int w, int h, void* _data, void* _dst) {
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
+        return;
+    }
+
     float* dst = (float*)_dst;
     float data = *((float*)_data);
 
@@ -205,6 +212,10 @@ void writeSingleFloat(int x, int y, int w, int h, void* _data, void* _dst) {
 }
 
 void writeSingleChar(int x, int y, int w, int h, void* _data, void* _dst) {
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
+        return;
+    }
+
     char* dst = (char*)_dst;
     char data = *((char*)_data);
 
@@ -232,6 +243,10 @@ void write3x3Plus(int x, int y, int w, int h, void* _data, void* _dst) {
 }
 
 void orSingleULL(int x, int y, int w, int h, void* _data, void* _dst) {
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
+        return;
+    }
+
     unsigned long long* dst = (unsigned long long*)_dst;
     unsigned long long data = *((unsigned long long*)_data);
 
@@ -292,9 +307,6 @@ inline float linearSampleBrush(float brushX, float brushY, float* brush, int bru
     float lerp1 = brush[idx1] * (1 - fx) + brush[idx1 + 1] * fx;
     float lerp2 = brush[idx2] * (1 - fx) + brush[idx2 + 1] * fx;
     return lerp1 * (1 - fy) + lerp2 * fy;
-
-    
-    
 }
 
 void writeSingleFloatBrush(float x, float y, int w, int h, void* _data, void*_dst) {
@@ -355,20 +367,23 @@ void setPixel(float* dst, int x, int y, int w, float r, float g, float b, float 
 }
 
 int pixelSet(float* dst, int x, int y, int w, int h) {
-    if(OUTSIDE_IMAGE(x,y,w,h))
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
         return 0;
+    }
     return dst[(y * w + x) << 2] != 0;
 }
 
 int pixelSetMask(char* buf, int x, int y, int w, int h) {
-    if(OUTSIDE_IMAGE(x,y,w,h))
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
         return 0;
+    }
     return buf[y * w + x] != 0;
 }
 
 int pixelSetMaskBoundary(char* buf, int x, int y, int w, int h) {
-    if(OUTSIDE_IMAGE(x,y,w,h))
+    if(OUTSIDE_IMAGE(x,y,w,h)) {
         return 1;
+    }
     return buf[y * w + x] != 0;
 }
 
