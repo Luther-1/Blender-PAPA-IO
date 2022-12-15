@@ -3,7 +3,7 @@ gcc -shared -o PTex.dll texture.o
 del texture.o
 
 gcc -O3 -fPIC -fopenmp -Wall -c -o texture.o texture_extensions.c
-gcc -shared -o ETex.dll texture.o -lgomp -static
+gcc -shared -fPIC -o ETex.dll texture.o -lgomp -static
 del texture.o
 
 rem gcc -O3 -fPIC -fopenmp -Wall -lgomp -g -o main.exe main.c
