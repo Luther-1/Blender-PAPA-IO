@@ -94,7 +94,7 @@
         }
       },
       "bake": {
-        "supersample": false,
+        "supersample": true,
         "stages": [
           {
             "operation": "BAKE",
@@ -445,7 +445,7 @@
         }
       },
       "bake": {
-        "supersample": false,
+        "supersample": true,
         "magic_pixel": {
           "location": [
             1.0,
