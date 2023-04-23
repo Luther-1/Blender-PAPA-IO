@@ -134,9 +134,10 @@ def duplicateObject(obj, newName, prepend = True):
     return n
 
 def getObjectType(obj):
-    if not OBJ_TYPE_STRING in obj:
+    try:
+        return obj[OBJ_TYPE_STRING]
+    except:
         return ""
-    return obj[OBJ_TYPE_STRING]
 
 # https://blender.stackexchange.com/a/158902
 def srgbToLinearRGB(c):
