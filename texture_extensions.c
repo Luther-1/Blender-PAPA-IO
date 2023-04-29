@@ -839,7 +839,7 @@ void drawLineSegments(float* dst, BitmaskData* bitmaskData, IslandLines* lines, 
     }
 }
 
-void copyTempToDst(ImageData* imageData, float* dst) {
+void copyTempToDst(ImageData* imageData, float* color, float* dst) {
     int width = imageData->width;
     int height = imageData->height;
     int numElements = width * height * 4;
@@ -847,10 +847,9 @@ void copyTempToDst(ImageData* imageData, float* dst) {
     for(int i = 0;i<numElements;i+=4) {
         int sIdx = i / 4;
 
-        // hard coded white to save memory.
-        dst[i + 0] = 1.0f;
-        dst[i + 1] = 1.0f;
-        dst[i + 2] = 1.0f;
+        dst[i + 0] = color[0];
+        dst[i + 1] = color[1];
+        dst[i + 2] = color[2];
         float currentAlpha = dst[i + 3];
         float targetAlpha = scratch[sIdx];
 
@@ -881,7 +880,7 @@ void generateBitmaskTest(float* dst, ImageData* data, Island* islands, int start
     }
 }
 
-void generateEdgeHighlights( float** lineData, float* tuvData, float* multipliers, int numEntries, int numPasses, int width, int height, float* dst ) {
+void generateEdgeHighlights( float** lineData, float* tuvData, float* multipliers, int numEntries, int numPasses, int width, int height, float* color, float* dst ) {
 
     int threads = omp_get_max_threads();
 
@@ -909,7 +908,7 @@ void generateEdgeHighlights( float** lineData, float* tuvData, float* multiplier
 
     }
 
-    copyTempToDst(imageData, dst);
+    copyTempToDst(imageData, color, dst);
     freeStructData(bitmaskData, lineList, numPasses, islands, threadData, threads, imageData);
 }
 

@@ -39,6 +39,7 @@ DIFFUSE_COMPOSITE_TEXTURE = "__PAPA_IO_TEXTURE_DIFFUSE_COMPOSITE"
 AO_RAW_TEX_NAME_STRING = "__PAPA_IO_TEXTURE_AO_RAW"
 AO_MULTIPLY_FLOAT = "__PAPA_IO_AO_MULTIPLY"
 EDGE_HIGHLIGHT_TEXTURE = "__PAPA_IO_EDGE_HIGHLIGHTS"
+EDGE_HIGHLIGHT_COLOR_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_COLOR"
 EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_DILATE"
 EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_BLUR"
 EDGE_HIGHLIGHT_MULTIPLIER_FLOAT_ARRAY = "__PAPA_IO_EDGE_HIGHLIGHTS_MULTIPLIER"
@@ -608,11 +609,11 @@ def setParamatersForOperator(operator, collect=[]):
         if key in collect:
             retVal[collect.index(key)] = value
         elif not key in nameToProperty:
-            string = "Property \""+str(key)+"\" not found in operator "+operator.bl_label+". This means your texture_config.json is invalid!"
-            print(string)
-            operator.report({"ERROR"}, string)
+            msg = "Property \""+str(key)+"\" not found in operator "+operator.bl_label+". This means your texture_config.json is invalid!"
+            print(msg)
+            operator.report({"ERROR"}, msg)
         else:
-            setattr(operator, nameToProperty[key], value)
+            setattr(operator, nameToProperty[key].identifier, value)
     return retVal
 
 class SetupTextureTemplate(bpy.types.Operator):
@@ -1519,6 +1520,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
     taperFactor: FloatProperty(name="Taper Factor",description="The amount to taper at min", min=0, max=1, default=0.5)
     islandThreshold: FloatProperty(name="Island Scale Threshold",description="Multiplier for when to start scaling lines due to small faces", min=0, max=64, default=0.5)
     islandFactor: FloatProperty(name="Island Scale Factor",description="Multiplier for how fast to scale down lines on small faces", min=0, max=4, default=0)
+    color: FloatVectorProperty(name="Color",description="The color to use for the lines", subtype='COLOR', min=0.0, max=1.0, default=(1.0, 1.0, 1.0))
     clear: BoolProperty(name="Clear Image",description="Whether or not to clear the image", default=True)
 
     numPasses: IntProperty(name="Passes",description="The number of passes to perform",min=1,max=8,default=1)
@@ -1609,8 +1611,8 @@ class TweakEdgeHighlights(bpy.types.Operator):
             multiplier.append(prop.multiplier)
         
 
-        self.processObject(obj, tex, lineThickness, blurAmount, multiplier,
-                                        self.minTaper, self.maxTaper, self.taperFactor, self.islandThreshold, self.islandFactor, self.clear)
+        self.processObject( obj, tex, lineThickness, blurAmount, multiplier,
+                            self.minTaper, self.maxTaper, self.taperFactor, self.islandThreshold, self.islandFactor, self.color, self.clear)
 
         self.lastNumPasses = self.numPasses
 
@@ -1643,6 +1645,8 @@ class TweakEdgeHighlights(bpy.types.Operator):
             self.islandThreshold = obj[EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT]
         if EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT in obj:
             self.islandFactor = obj[EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT]
+        if EDGE_HIGHLIGHT_COLOR_FLOAT_ARRAY in obj:
+            self.color = obj[EDGE_HIGHLIGHT_COLOR_FLOAT_ARRAY]
         if EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY in obj:
             lineThickness = obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY]
         if EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY in obj:
@@ -1655,10 +1659,10 @@ class TweakEdgeHighlights(bpy.types.Operator):
         if lineThickness == None or blurAmount == None or multiplier == None:
             if not (lineThickness == None and blurAmount == None and multiplier == None):
                 self.report({"ERROR"}, "Configuration for edge highlights requires lineThickness, blurAmount, and multiplier to be set")
-                return
+                return {'CANCELLED'}
         elif len(lineThickness) != len(blurAmount) or len(lineThickness) != len(multiplier):
             self.report({"ERROR"}, "One of lineThickness, blurAmount, or multiplier is not the same length as the others")
-            return
+            return {'CANCELLED'}
         else:
             self.numPasses = len(lineThickness)
 
@@ -1673,6 +1677,9 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         row = l.row()
         row.prop(self,"clear")
+
+        row = l.row()
+        row.prop(self,"color")
 
         row = l.row()
         row.prop(self,"numPasses")
@@ -1873,7 +1880,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         return islands, islandMap
 
 
-    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper, islandThreshold, islandFactor, clear):
+    def processObject(self, obj, tex, thickness, blur, multiplier, minAngle, maxAngle, minTaper, islandThreshold, islandFactor, color, clear):
         # the following are converted into arrays of structs in C
         # lineData: array of floats [num_lines, mask_idx, [start, end, thickness, blur...]...] ends when start has a value of -infinity
         # triangulatedUVData: ordered list of float indices as follows [num_triangles, <triangulated UV data>...] ends when num_triangles has a value of -infinity
@@ -1881,7 +1888,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         if not textureLibrary:
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
-            return
+            return {'CANCELLED'}
             
         obj[EDGE_HIGHLIGHT_DILATE_FLOAT_ARRAY] = thickness
         obj[EDGE_HIGHLIGHT_BLUR_FLOAT_ARRAY] = blur
@@ -1891,6 +1898,7 @@ class TweakEdgeHighlights(bpy.types.Operator):
         obj[EDGE_HIGHLIGHT_TAPER_FACTOR_FLOAT] = minTaper
         obj[EDGE_HIGHLIGHT_ISLAND_THRESHOLD_FLOAT] = islandThreshold
         obj[EDGE_HIGHLIGHT_ISLAND_FACTOR_FLOAT] = islandFactor
+        obj[EDGE_HIGHLIGHT_COLOR_FLOAT_ARRAY] = color
         obj[EDGE_HIGHLIGHT_CLEAR_BOOL] = clear
         self.saveProperties(thickness, blur, multiplier)
 
@@ -1939,11 +1947,15 @@ class TweakEdgeHighlights(bpy.types.Operator):
 
         extraPointerLength = len(multiplier)
 
+        colorData = array('f',[color[0], color[1], color[2]])
+        colorPointer = colorData.buffer_info()[0]
+
         textureLibrary.generateEdgeHighlights(  ctypes.cast(linePointer,ctypes.POINTER(ctypes.POINTER(ctypes.c_float))),
                                                 ctypes.cast(tuvPointer,ctypes.POINTER(ctypes.c_float)),
                                                 ctypes.cast(extraPointer, ctypes.POINTER(ctypes.c_float)),
                                                 ctypes.c_int(dataLen), ctypes.c_int(extraPointerLength),
                                                 ctypes.c_int(imgWidth), ctypes.c_int(imgHeight),
+                                                ctypes.cast(colorPointer,ctypes.POINTER(ctypes.c_float)),
                                                 ctypes.cast(outPointer,ctypes.POINTER(ctypes.c_float)))
         
         tex.pixels[:] = outData
@@ -2044,7 +2056,7 @@ class TweakDistanceField(bpy.types.Operator):
 
         if not textureLibrary:
             self.report({'ERROR'},"TEXTURE LIBRARY NOT LOADED")
-            return
+            return {'CANCELLED'}
 
         tInfo = ctypes.c_float()
 
@@ -2541,7 +2553,7 @@ if path.exists(libPath):
     try:
         textureLibrary = ctypes.CDLL(libPath,winmode=0)
         textureLibrary.generateEdgeHighlights.argTypes = (ctypes.POINTER(ctypes.POINTER(ctypes.c_float)), ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float), 
-                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_float))
+                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_float))
         textureLibrary.generateEdgeHighlights.resType = None
 
         textureLibrary.generateDistanceField.argTypes = (ctypes.POINTER(ctypes.c_float), ctypes.c_int, ctypes.POINTER(ctypes.c_float), ctypes.c_int,
