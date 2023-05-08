@@ -259,7 +259,7 @@ def load_papa(properties, context):
                         vertex = meshData[0].getVertex(v)
                         bones = vertex.getBones()
                         weights = vertex.getWeights()
-                        for w in range(4):
+                        for w in range(len(weights)):
                             if(weights[w]==0):
                                 break
                             mappedVertexGroups[bones[w]].add([v],weights[w],"ADD")
