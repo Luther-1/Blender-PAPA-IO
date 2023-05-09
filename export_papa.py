@@ -355,7 +355,7 @@ def createMaterialData(mesh, properties):
             idx = face.material_index
             materialMap[idx][1].append(x)
 
-    if not properties.isCSG():
+    if not properties.isTerrain():
         for x in range(1,len(materialMap)):
             if len(materialMap[x][1]) !=0:
                 PapaExportNotifications.getInstance().addNotification("Mesh \"" + mesh.name+  "\" has faces assigned to material at index "
@@ -451,7 +451,8 @@ def createBoneWeightMap(mesh, papaFile:PapaFile, skeleton:PapaSkeleton, hiddenBo
         
     return boneWeightMap, surrogateMap
 
-def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWeightMap, surrogateMap, papaSkeleton:PapaSkeleton, uvMap:dict, vertexData:dict, properties):
+def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWeightMap,
+                        surrogateMap, papaSkeleton:PapaSkeleton, colorData:dict, uvMap:dict, vertexData:dict, properties):
     print("Generating Vertex Buffers...")
     polygons = mesh.data.polygons
     vertices = mesh.data.vertices
@@ -494,11 +495,12 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                 # however, there is also the possibility of UVs not aligning, so now we need to check if UVs align
                 normal = vectorToImmutableMapping(vertexData[0][poly.index][idx])
                 uv1 = uvMap[0][poly.index][idx]
+                color = colorData[poly.index][idx]
                 foundVertex = False
-                if properties.isCSG(): # respect shadow map as well
+                if properties.isTerrain(): # respect shadow map and color data as well
                     uv2 = uvMap[1][poly.index][idx]
                     for x in knownVertices:
-                        if(x[1] == uv1 and x[2] == uv2 and x[3] == normal): # found a match, select it
+                        if(x[1] == uv1 and x[2] == uv2 and x[3] == normal and x[4] == color): # found a match, select it
                             vertexFaceMap[idx][poly.index] = x[0]
                             foundVertex = True
                             break
@@ -510,22 +512,36 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
                             break
                 if foundVertex:
                     continue
+
+            loc = None
+            normal = None
+            texCoord1 = None
+            texCoord2 = None
+            color = None
             
             # if we didn't find a matching UV, or there exists no data for this vertex, make a new vertex and register it
-            if properties.isCSG():
-                # Position3Normal3Tan3Bin3TexCoord4
-                loc = Vector(vertices[idx].co)
-                normal = vertexData[0][poly.index][idx]
-                tangent = vertexData[1][poly.index][idx]
-                binormal = vertexData[2][poly.index][idx]
-                texCoord1 = uvMap[0][poly.index][idx]
-                texCoord2 = uvMap[1][poly.index][idx]
-                v = PapaVertex(pos=loc,norm=normal,binorm=binormal,tan=tangent,texcoord1=texCoord1,texcoord2=texCoord2)
+            if properties.isTerrain():
+                if properties.isFeature():
+                    # Position3Normal3Color4TexCoord2
+                    loc = Vector(vertices[idx].co)
+                    normal = vertexData[0][poly.index][idx]
+                    texCoord1 = uvMap[0][poly.index][idx]
+                    texCoord2 = uvMap[1][poly.index][idx]
+                    color = colorData[poly.index][idx]
+                    v = PapaVertex(pos=loc,norm=normal, col=color,texcoord1=texCoord1,texcoord2=texCoord2)
+                else:
+                    # Position3Normal3Tan3Bin3TexCoord4
+                    loc = Vector(vertices[idx].co)
+                    normal = vertexData[0][poly.index][idx]
+                    tangent = vertexData[1][poly.index][idx]
+                    binormal = vertexData[2][poly.index][idx]
+                    texCoord1 = uvMap[0][poly.index][idx]
+                    texCoord2 = uvMap[1][poly.index][idx]
+                    v = PapaVertex(pos=loc,norm=normal,binorm=binormal,tan=tangent,texcoord1=texCoord1,texcoord2=texCoord2)
             elif not papaSkeleton:
                 loc = Vector(vertices[idx].co)
                 normal = vertexData[0][poly.index][idx]
                 texCoord1 = uvMap[0][poly.index][idx]
-                texCoord2 = None # required for buckets
                 v = PapaVertex(pos=loc, norm=normal, texcoord1=texCoord1)
             else:
                 loc = Vector(vertices[idx].co)
@@ -555,7 +571,6 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
 
                 normal = vertexData[0][poly.index][idx]
                 texCoord1 = uvMap[0][poly.index][idx]
-                texCoord2 = None # required for buckets
                 v = PapaVertex(pos=loc, norm=normal, texcoord1=texCoord1, bones=boneList, weights=weightList)
             vertexIndex = len(vertexList)
             vertexFaceMap[idx][poly.index] = vertexIndex
@@ -564,9 +579,12 @@ def createPapaModelData(papaFile:PapaFile, mesh, shadingMap, materialMap, boneWe
             # register in the bucket
             if not bucket.get(idx,False):
                 bucket[idx] = []
-            bucket[idx].append( (vertexIndex, texCoord1, texCoord2, vectorToImmutableMapping(normal)) )
-    if properties.isCSG():
-        vertexFormat = 10
+            bucket[idx].append( (vertexIndex, texCoord1, texCoord2, vectorToImmutableMapping(normal), color) )
+    if properties.isTerrain():
+        if properties.isFeature():
+            vertexFormat = 7
+        else:
+            vertexFormat = 10
     elif not papaSkeleton:
         vertexFormat = 5
     else:
@@ -645,7 +663,7 @@ def getOrMakeTexture(papaFile:PapaFile, textureMap:dict, path: str):
 def createPapaMaterials(papaFile:PapaFile, mesh, materialMap, properties):
     print("Generating Materials...")
     materials = []
-    if properties.isCSG():
+    if properties.isTerrain():
         shaderLevel = 0 # textured
         diffuseStringIndex = papaFile.addString(PapaString("DiffuseTexture"))
         if "normal" in properties.getShader():
@@ -697,7 +715,7 @@ def ensureMeshPropertiesValid(mesh, properties):
 
 def ensureMaterialsValid(mesh, properties):
 
-    if properties.isCSG():
+    if properties.isTerrain():
         if len(mesh.material_slots) == 0 or not any(mesh.data.materials):
             raise PapaBuildException("No materials present on CSG")
 
@@ -800,7 +818,7 @@ def computeUVData(mesh, properties):
     if not hasUV1:
         raise PapaBuildException("Mesh "+mesh.name+" is missing UV data.")
 
-    if properties.isCSG():
+    if properties.isTerrain():
         if not hasUV2:
             raise PapaBuildException("CSG requires two UV maps. The first UV map is the texture UV map while the second is the shadow map.")
         for poly in mesh.data.polygons:
@@ -820,6 +838,34 @@ def computeUVData(mesh, properties):
                 textureMapUV[vIdx] = (uv0[loopIdx].uv[0], uv0[loopIdx].uv[1])
     
     return uvMap
+
+def computeColorData(mesh):
+    colorData = {}
+    attribute = None
+    isCorner = True
+
+    for attr in mesh.data.color_attributes:
+        if attr.domain == "CORNER" or attr.domain == "POINT":
+            isCorner = attr.domain == "CORNER"
+            if attr.data_type == "BYTE_COLOR":
+                attribute = attr
+                break
+            if attr.data_type == "FLOAT_COLOR":
+                attribute = attr
+                break
+
+    polygons = mesh.data.polygons
+    loops = mesh.data.loops
+
+    for poly in polygons:
+        data = {}
+        colorData[poly.index] = data
+        iterData = poly.loop_indices if isCorner else poly.vertices
+        for idx in iterData:
+            dataIdx = loops[idx].vertex_index if isCorner else idx
+            data[dataIdx] = list([round(min(x, 1.0) * 255) for x in attribute.data[idx].color]) if attribute else [204, 204, 204, 255]
+
+    return colorData
 
 def computeVertexData(mesh, connectionMap, angleMap, properties):
     # calculate the normal of each vertex in the mesh. if the face is flat shaded, the normal is the same as the
@@ -858,7 +904,7 @@ def computeVertexData(mesh, connectionMap, angleMap, properties):
             else:
                 nMap[idx] = Vector(vertices[idx].normal)
 
-    if properties.isCSG():
+    if properties.isTerrain():
         # calculate the tangents and bitangents
         
         # https://blender.stackexchange.com/questions/26116/script-access-to-tangent-and-bitangent-per-face-how
@@ -888,17 +934,20 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     ensureMeshPropertiesValid(mesh, properties)
 
     # shadingMap[polygonIndex] -> shading index, connectionMap[polygonIndex][vertex] -> all connected faces (inclues the input face, aware of mark sharp)
-    # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected
+    # note the connection map is not necessarily the faces that are literally connected in the model, it is the faces that should be connected given user properties
     shadingMap, connectionMap, angleMap = createFaceShadingIslands(mesh, properties) 
     materialMap = createMaterialData(mesh, properties) # [materialIndex][dataIdx (0 for material info, 1 for list of polygons that use that material)]
 
     uvMap = computeUVData(mesh, properties) # [mapIndex (0 for main UV, 1 for shadow map)][face][vertex] -> UV coord
+
+    # create color data
+    colorData = computeColorData(mesh) # [polygonIndex][vertex] -> byte color
  
     bpy.ops.object.mode_set(mode='EDIT') # swap to edit to get the triangles and normals
     mesh.data.calc_loop_triangles()
     mesh.data.calc_normals_split()
 
-    if properties.isCSG():
+    if properties.isTerrain():
         mapName = mesh.data.uv_layers[0].name # use texture UV map
         mesh.data.calc_tangents(uvmap=mapName)
 
@@ -922,7 +971,8 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
         papaFile.addMaterial(mat)
 
     # create the vertex buffer, index buffer, and material
-    vBuffer, iBuffer, materialGroups = createPapaModelData(papaFile, mesh, shadingMap, materialMap, boneWeightMap, surrogateMap, papaSkeleton, uvMap, vertexData, properties)
+    vBuffer, iBuffer, materialGroups = createPapaModelData(papaFile, mesh, shadingMap, materialMap, boneWeightMap,
+                                                           surrogateMap, papaSkeleton, colorData, uvMap, vertexData, properties)
 
     vBufferIndex = papaFile.addVertexBuffer(vBuffer)
     iBufferIndex = papaFile.addIndexBuffer(iBuffer)
@@ -960,7 +1010,7 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
     selectObject(mesh)
     bpy.ops.object.mode_set(mode=lastMode)
 
-    if properties.isCSG():
+    if properties.isTerrain():
         mesh.data.free_tangents()
 
 

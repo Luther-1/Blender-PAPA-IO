@@ -276,26 +276,26 @@ class PapaExportMaterialList(bpy.types.UIList):
         properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
         mat = ExportPapa.materialList[item.exportIndex] # i hate this so much why can't i just tell blender to make empty list objects
         
-        shader = int(properties.CSGExportShader) # gets the identifier property
+        shader = properties.terrainExportShader # gets the identifier property
 
         layout.use_property_split = True
         column = layout.column()
         column.label(text=mat.getMaterialName(),icon="MATERIAL")
-        if shader >= 1:
+        if "textured" in shader:
             r = column.row()
             r.alert = not self.isPathValid(item["texturePath"])
             r.prop(item,"texturePath")
             operatorProps = r.operator(PapaExportMaterialGetPath.bl_idname,icon="FILE_TICK",text="")
             operatorProps.propertyIndex = item.exportIndex
             operatorProps.propertyName = "texturePath"
-        if shader >= 2:
+        if "normal" in shader:
             r = column.row()
             r.alert = not self.isPathValid(item["normalPath"])
             r.prop(item,"normalPath")
             operatorProps = r.operator(PapaExportMaterialGetPath.bl_idname,icon="FILE_TICK",text="")
             operatorProps.propertyIndex = item.exportIndex
             operatorProps.propertyName = "normalPath"
-        if shader >= 3:
+        if "material" in shader:
             r = column.row()
             r.alert = not self.isPathValid(item["materialPath"])
             r.prop(item,"materialPath")
@@ -309,11 +309,12 @@ class PapaExportMaterialList(bpy.types.UIList):
         return (os.path.isfile(path) and ("/pa/" in path or "/pa_ex1/" in path)) or path.startswith("/pa/") or path.startswith("/pa_ex1/") or len(path) == 0
 
 class PapaExportProperties:
-    def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
+    def __init__(self, filepath:str, target:object, isTerrain: bool, isFeature: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
                         ignoreRoot:bool, ignoreHidden:bool,ignoreNoData:bool,merge:bool, singleMaterial:bool, signature:str):
         self.__filepath = filepath
         self.__targetObject = target
-        self.__isCSG = isCSG
+        self.__isTerrain = isTerrain
+        self.__isFeature = isFeature
         self.__markSharp = markSharp
         self.__shader = shader
         self.__materialMap = {}
@@ -333,8 +334,11 @@ class PapaExportProperties:
     def getTargets(self) -> object:
         return self.__targetObject
 
-    def isCSG(self):
-        return self.__isCSG
+    def isTerrain(self):
+        return self.__isTerrain
+    
+    def isFeature(self):
+        return self.__isFeature
 
     def isRespectMarkSharp(self):
         return self.__markSharp
@@ -368,9 +372,9 @@ class PapaExportProperties:
 
 class ExportPapaUISettings(PropertyGroup):
 
-    def onUpdateCSG(self, context):
+    def onUpdateTerrain(self, context):
         properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
-        if properties.isCSG:
+        if properties.isTerrain:
             properties.singleMaterial = False
 
     markSharp: BoolProperty(name="Respect Mark Sharp", description="Causes the compiler to consider adjacent smooth"
@@ -380,17 +384,23 @@ class ExportPapaUISettings(PropertyGroup):
     singleMaterial: BoolProperty(name="Single Material", description="Replaces all materials on the object with a default material", default=True)
     merge: BoolProperty(name="Multi-Mesh", description="Causes selected meshes with the same skeleton to be written to the"
         + " file as one model instead of many. Creates support for >32 bones", default=True)
-    isCSG : BoolProperty(name="Export as CSG",description="Exports the selected mesh as a CSG instead of a unit. Cannot be used if multiple meshes are selected",
-        update=onUpdateCSG)
+    isTerrain : BoolProperty(name="Export as Terrain",description="Exports the selected mesh as a CSG or feature instead of a unit. Cannot be used if multiple meshes are selected",
+        update=onUpdateTerrain)
 
     shaderOptions = [
-        ("1", "textured", "PA shader with just a texture", "", 0),
-        ("2", "textured_normal", "PA shader with texture and a normal map (encoded in the Green and Alpha channels, G -> G, A -> R)", "", 1),
-        ("3", "textured_normal_material", "PA shader with texture, a normal map "
-            + "(encoded in the Green and Alpha channels, G -> G, A -> R), and an emission + specular material", "", 2),
+        ("textured", "textured", "PA shader with just a texture"),
+        ("textured_normal", "textured_normal", "PA shader with texture and a normal map (encoded in the Green and Alpha channels, G -> G, A -> R)"),
+        ("textured_normal_material", "textured_normal_material", "PA shader with texture, a normal map "
+            + "(encoded in the Green and Alpha channels, G -> G, A -> R), and an emission + specular material"),
     ]
 
-    CSGExportShader: EnumProperty(name="",description="Export shader type",items=shaderOptions)
+    terrainOptions = [
+        ("export_type_csg", "CSG", "CSG which are manually placed in the world with the editor"),
+        ("export_type_feature", "Feature", "Features which are automatically placed like trees and rocks"),
+    ]
+
+    terrainType: EnumProperty(name="",description="Type of terrain to export",items=terrainOptions)
+    terrainExportShader: EnumProperty(name="",description="Export shader type",items=shaderOptions)
 
     ignoreRoot: BoolProperty(name="Ignore Root Movement", description="Any bones with no parent will have all transforms removed",default=True)
     ignoreHidden: BoolProperty(name="Ignore Hidden Bones", description="Hidden bones will not be written to the file"
@@ -450,25 +460,32 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         row.prop(properties,"ignoreHidden")
 
         row = l.row()
-        row.enabled = not properties.isCSG
+        row.enabled = not properties.isTerrain
         row.prop(properties,"singleMaterial")
 
         row = l.row()
         row.prop(properties,"merge") 
 
         row = l.row()
-        row.prop(properties,"isCSG")
-        row.enabled = self.__isCSGCompatible
+        row.prop(properties,"isTerrain")
+        row.enabled = self.__isTerrainCompatible
 
-        col = l.column()
-        col.label(text="CSG Export Shader:")
-        col.prop(properties,"CSGExportShader")
-        col.enabled = properties.isCSG
+        split = l.split(factor=0.3)
+
+        col = split.column()
+        col.label(text="Type")
+        col.prop(properties,"terrainType")
+        col.enabled = properties.isTerrain
+
+        col = split.column()
+        col.label(text="Shader")
+        col.prop(properties,"terrainExportShader")
+        col.enabled = properties.isTerrain
         
         row = l.row()
         row.template_list(PapaExportMaterialList.bl_idname,"",bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST",
             bpy.context.scene,"SCENE_PAPA_MATERIALS_LIST_ACTIVE",rows = len(ExportPapa.materialList))
-        row.enabled = properties.isCSG
+        row.enabled = properties.isTerrain
 
         row = l.row()
         row.prop(properties,"signature")
@@ -524,16 +541,18 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
         self.__updatePaths() # update data to match UI
         self.__correctPaths() 
-        shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
+        shader = properties.terrainExportShader
+        isFeature = properties.terrainType == "export_type_feature"
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
-            properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
-            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.singleMaterial and not properties.isCSG, properties.signature)
+            properties.isTerrain, isFeature, properties.markSharp, shader, ExportPapa.materialList, properties.compress,
+            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge,
+            (properties.singleMaterial and not properties.isTerrain), properties.signature)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
         self.__objectsList = self.getObject()
-        self.__isCSGCompatible = False
+        self.__isTerrainCompatible = False
         self.__isAnimation = False
         ExportPapa.materialList = [] # holds the backend
         ExportPapa.materialUIList = [] # holds the UI frontend
@@ -548,7 +567,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
             self.__isAnimation = True
 
         if len(self.__objectsList) == 1 and self.__objectsList[0].type == "MESH":
-            self.__isCSGCompatible = True
+            self.__isTerrainCompatible = True
             obj = self.__objectsList[0]
             idx = 0
             for slot in obj.material_slots:
@@ -572,10 +591,12 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
                 if len(mat.getMaterialPath()):
                     highestShaderLevel = max(highestShaderLevel, 3)
 
-        bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.CSGExportShader = str(highestShaderLevel)
+        if highestShaderLevel:
+            values = ["textured", "textured_normal", "textured_normal_material"]
+            bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.terrainExportShader = values[highestShaderLevel - 1]
         
-        if not self.__isCSGCompatible:
-            bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.isCSG = False
+        if not self.__isTerrainCompatible:
+            bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.isTerrain = False
         return {'RUNNING_MODAL'}
     
     @classmethod

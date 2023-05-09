@@ -113,9 +113,9 @@ def load_papa(properties, context):
                         uvLayer[i].uv = vertexUV
 
                 if(vertex.getColour() != None):
-                    if(not blenderMesh.data.vertex_colors):
-                        blenderMesh.data.vertex_colors.new(name="PA")
-                    colour_layer = blenderMesh.data.vertex_colors["PA"]
+                    if(len(blenderMesh.data.color_attributes) == 0):
+                        blenderMesh.data.color_attributes.new("PA","BYTE_COLOR","CORNER")
+                    colour_layer = blenderMesh.data.color_attributes["PA"]
                     for poly in blenderMesh.data.polygons:
                         for idx in poly.loop_indices:
                             loop = blenderMesh.data.loops[idx]

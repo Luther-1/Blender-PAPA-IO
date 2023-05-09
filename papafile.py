@@ -318,7 +318,7 @@ class PapaVertexBuffer(PapaComponent):
                 t1 = v.getTexcoord1()
                 t2 = v.getTexcoord2()
 
-                struct.pack_into('<ffffffBBBBff', data, 44 * i,p[0],p[1],p[2],n[0],n[1],n[2],c[0],c[1],c[2],c[3],t1[0],t1[1],t2[0],t2[1])
+                struct.pack_into('<ffffffBBBBffff', data, 44 * i,p[0],p[1],p[2],n[0],n[1],n[2],c[0],c[1],c[2],c[3],t1[0],t1[1],t2[0],t2[1])
 
         elif (vertexFormat == 8): # Position3Weights4bBones4bNormal3TexCoord2
             for i in range(numberOfVertices):
