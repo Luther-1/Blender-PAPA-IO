@@ -150,7 +150,7 @@ void decodeTexture( unsigned char* data, int width, int height, int format, floa
                 for(int yy =0; yy<4; yy++) {
                     for(int xx =0; xx<4; xx++) { // copy our colour data into the array
                         unsigned int colourIndex = bits & 0b11;
-                        if(yy+y < height && xx + y < width) {
+                        if(yy + y < height && xx + x < width) {
                             int idx = (xx + x + (heightZero - (yy + y)) * width) * 4;
                             float* col = colours[colourIndex];
                             dst[idx] = col[0];
