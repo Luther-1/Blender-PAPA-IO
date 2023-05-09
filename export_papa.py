@@ -342,20 +342,13 @@ def createMaterialData(mesh, properties):
     materialMap = []
 
     if properties.isSingleMaterial():
-        arr = []
-        for x in range(len(polygons)):
-            arr.append(x)
-        materialMap.append([createEmptyMaterialInfo(mesh),arr])
-        return materialMap
+        return [[createEmptyMaterialInfo(mesh),list(range(len(polygons)))]]
     
     for mat in mesh.data.materials:
         materialMap.append([createMaterialInfoFor(mat),[]])
     
     if len(materialMap) == 0:
-        arr = []
-        for x in range(len(polygons)):
-            arr.append(x)
-        materialMap.append([createEmptyMaterialInfo(mesh),arr])
+        materialMap.append([createEmptyMaterialInfo(mesh),list(range(len(polygons)))])
     else:
         for x in range(len(polygons)):
             face = polygons[x]

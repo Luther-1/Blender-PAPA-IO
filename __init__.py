@@ -250,6 +250,10 @@ class PapaExportMaterial:
     def setMaterialPath(self, path):
         self.__material = path
 
+    def reportError(self, operator):
+        if self.__texture == ExportPapa.NO_TEXTURE_STRING and self.__material == ExportPapa.NO_TEXTURE_STRING and self.__normal == ExportPapa.NO_TEXTURE_STRING:
+            operator.report({"WARNING"}, f"All materials in {self.__materialName} are blank. Remove this material or assign textures.")
+
 class PapaExportMaterialGetPath(bpy.types.Operator):
     """Sets the path of the texture to be the currently selected file"""
     bl_idname = "export_scene_grab_path.uberent_papa"
@@ -302,7 +306,7 @@ class PapaExportMaterialList(bpy.types.UIList):
     def isPathValid(self, path):
         path = path.replace("\\","/")
         # either it is an absolute path and exists, or it's a relative path (assumes it exists)
-        return (os.path.isfile(path) and ("/pa/" in path or "/pa_ex1/" in path)) or path.startswith("/pa/")
+        return (os.path.isfile(path) and ("/pa/" in path or "/pa_ex1/" in path)) or path.startswith("/pa/") or path.startswith("/pa_ex1/") or len(path) == 0
 
 class PapaExportProperties:
     def __init__(self, filepath:str, target:object, isCSG: bool, markSharp:bool, shader: str, materialList: list, compressData: bool,
@@ -475,28 +479,31 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         for object in bpy.context.scene.objects:
             if object.name == self.target_object_string:
                 return [object]
-
+            
     def __toLocalDirectory(self, path):
         if len(path) == 0:
             return ExportPapa.NO_TEXTURE_STRING
 
-        path = path.replace("\\","/")
-        directory = "/pa/"
+        path = path.replace("\\","/").replace("/pa_ex1/","/pa/")
 
         if path.startswith("/pa/"): # local path already
             return path
 
-        idx = path.find(directory)
+        idx = path.find("/pa/")
         if idx == -1:
-            print("Warning: Path \""+path+"\" is not in a subdirectory of "+directory+". Assuming the path is meant to be blank")
+            msg = "Warning: Path \""+path+"\" is not in a subdirectory of /pa/ or /pa_ex1/. Assuming the path is meant to be blank."
+            self.report({"WARNING"}, msg)
             return ExportPapa.NO_TEXTURE_STRING
         return path[idx:]
+
+       
         
     def __correctPaths(self):
         for mat in ExportPapa.materialList: # update the material path to be local to PA
             mat.setTexturePath(self.__toLocalDirectory(mat.getTexturePath()))
             mat.setNormalPath(self.__toLocalDirectory(mat.getNormalPath()))
             mat.setMaterialPath(self.__toLocalDirectory(mat.getMaterialPath()))
+            mat.reportError(self)
 
     def __updatePaths(self):
         for x in range(len(ExportPapa.materialUIList)): # update the materials
@@ -520,7 +527,7 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
         shader = ExportPapaUISettings.shaderOptions[int(properties.CSGExportShader)-1][1] # get the shader by name. bit spaghetti
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isCSG,properties.markSharp, shader, ExportPapa.materialList, properties.compress,
-            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.singleMaterial, properties.signature)
+            properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge, properties.singleMaterial and not properties.isCSG, properties.signature)
         return export_papa.write(self, context, prop)
     
     def invoke(self, context, event):
