@@ -222,10 +222,26 @@ def createFaceShadingIslands(mesh, properties):
     if not properties.isRespectMarkSharp():
         return faceMap, {}, {}
 
-    connectionMap = [] # [faceIndex][vertexIndex] -> all connected faces (sharp aware)
+    edgeFaceMap = {} # [edgeIndex] -> connected faces
+    edgeSharpMask = {} # [edgeIndex] -> bool (should be considered sharp)
+    connectionMap = [] # [faceIndex][vertexIndex] -> all connected neighbour faces (sharp aware)
     vertexShadingMap = [] # [faceIndex][vertexIndex] -> unique index to separate out local connection
     tempShadingMap = {} # [uniqueIndex] -> maps the vertexShadingMap back to the connection map
     currentIndex = 0
+
+    for poly in polygons:
+        for key in poly.edge_keys:
+            if key in edgeFaceMap:
+                edgeFaceMap[key].append(poly)
+            else:
+                edgeFaceMap[key] = [poly]
+
+    for edge in edges:
+        data = edgeFaceMap[edge.key]
+        if edge.use_edge_sharp or len(data) != 2:
+            edgeSharpMask[edge.key] = True
+        else:
+            edgeSharpMask[edge.key] = mesh.data.use_auto_smooth and Vector(data[0].normal).angle(Vector(data[1].normal)) >= mesh.data.auto_smooth_angle
 
     for _ in range(len(polygons)):
         vertexShadingMap.append({})
@@ -257,7 +273,7 @@ def createFaceShadingIslands(mesh, properties):
                 poly = openList.pop()
                 for key in polygons[poly].edge_keys:
                     edge = edges[edgeKeyToIndex[key]]
-                    if edge.use_edge_sharp or not vertexIdx in edge.vertices:
+                    if edgeSharpMask[key] or not vertexIdx in edge.vertices:
                         continue
 
                     faces = edgeKeyToFaces[key]
@@ -272,7 +288,7 @@ def createFaceShadingIslands(mesh, properties):
             tempShadingMap[currentIndex] = connections
             currentIndex+=1
 
-    angleMap = [] # [faceIndex][vertexIndex] -> angle in radians between the edges that connect to this vertex
+    angleMap = [] # [faceIndex][vertexIndex] -> angle in radians between the edges on the face that connect to this vertex
     for _ in range(len(polygons)):
         angleMap.append({})
 
@@ -283,28 +299,23 @@ def createFaceShadingIslands(mesh, properties):
             polyEdges.append(edges[edgeKeyToIndex[key]])
 
         for vertexIdx in polygons[polyIdx].vertices:
-            # find the two edges that make up this face
+            # find the two edges that connect to the vertex
             currentEdges = []
             for edge in polyEdges:
                 if vertexIdx in edge.vertices:
                     currentEdges.append(edge)
             
-            # every face must have exactly 2 edges that touch a vertex, or else it is not a face.
-            v1 = currentEdges[0].vertices[0]
-            v2 = currentEdges[0].vertices[1]
-            v3 = currentEdges[1].vertices[0]
-            v4 = currentEdges[1].vertices[1]
+            # every face must have exactly 2 edges that touch a vertex.
+            a, b = currentEdges[0].vertices
+            c, t = currentEdges[1].vertices
 
-            if v1 == vertexIdx:
-                vec1 = Vector(vertices[v2].co) - Vector(vertices[v1].co)
-            else:
-                vec1 = Vector(vertices[v1].co) - Vector(vertices[v2].co)
+            if a != vertexIdx:
+                a, b = b, a
+            if c == vertexIdx:
+                c = t
 
-            if v3 == vertexIdx:
-                vec2 = Vector(vertices[v4].co) - Vector(vertices[v3].co)
-            else:
-                vec2 = Vector(vertices[v3].co) - Vector(vertices[v4].co)
-
+            vec1 = Vector(vertices[b].co) - Vector(vertices[a].co)
+            vec2 = Vector(vertices[c].co) - Vector(vertices[a].co)
             angleMap[polyIdx][vertexIdx] = vec1.angle(vec2, 0)
 
     return faceMap, connectionMap, angleMap
