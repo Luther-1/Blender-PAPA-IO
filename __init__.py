@@ -1,7 +1,7 @@
 # The MIT License
 # 
 # Copyright (c) 2013, 2014  Raevn
-# Copyright (c) 2021        Marcus Der      marcusder@hotmail.com
+# Copyright (c) 2021, 2022  Marcus Der      marcusder@hotmail.com
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,8 @@
 bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
-    "version": (1, 1, 3),
-    "blender": (3, 0, 1),
+    "version": (1, 2, 0),
+    "blender": (3, 0, 0),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
     "warning": "",
@@ -36,11 +36,16 @@ bl_info = {
 if "bpy" in locals():
     import imp
     if ("import_papa") in locals():
-        imp.reload(import_papa)
+        imp.reload(import_papa) # type: ignore
     if ("export_papa") in locals():
-        imp.reload(export_papa)
+        imp.reload(export_papa) # type: ignore
     if("papafile" in locals()):
-        imp.reload(papafile)
+        imp.reload(papafile) # type: ignore
+    if("texture_extensions" in locals()):
+        imp.reload(texture_extensions) # type: ignore
+
+from .texture_extensions import papa_io_register_texture, papa_io_unregister_texture
+
 import bpy
 from copy import copy
 from bpy.props import *
@@ -183,6 +188,8 @@ class PapaAddonPreferences(AddonPreferences):
 
     customColour1: FloatVectorProperty(name="Primary",min=0,max=1, subtype='COLOR', description="The primary custom colour.")
     customColour2: FloatVectorProperty(name="Secondary",min=0,max=1, subtype='COLOR', description="The secondary custom colour.")
+
+    textureExtensionsConfig: StringProperty(name="Texture Extensions Configuration", description="The configuration section to use in texture_config.json")
 
 class PapaExportMaterialListItem(PropertyGroup):
     exportIndex: IntProperty()
@@ -743,6 +750,7 @@ def register():
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST = CollectionProperty(type = PapaExportMaterialListItem)
     bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE = IntProperty()
     bpy.types.Scene.SCENE_PAPA_EXPORT_SETTINGS = PointerProperty(type=ExportPapaUISettings)
+    papa_io_register_texture()
     
 def unregister():
     from bpy.utils import unregister_class
@@ -754,6 +762,7 @@ def unregister():
     del bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST
     del bpy.types.Scene.SCENE_PAPA_MATERIALS_LIST_ACTIVE
     del bpy.types.Scene.SCENE_PAPA_EXPORT_SETTINGS
+    papa_io_unregister_texture()
 
 if __name__ == "__main__":
     register()
