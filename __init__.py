@@ -598,11 +598,11 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
                 if len(mat.getMaterialPath()):
                     highestShaderLevel = max(highestShaderLevel, 3)
 
+            bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.terrainType = "export_type_feature" if len(obj.data.color_attributes) else "export_type_csg"
+
         if highestShaderLevel:
             values = ["textured", "textured_normal", "textured_normal_material"]
             bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.terrainExportShader = values[highestShaderLevel - 1]
-
-        bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.terrainType = "export_type_feature" if len(obj.data.color_attributes) else "export_type_csg"
         
         if not self.__isTerrainCompatible:
             bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS.isTerrain = False
