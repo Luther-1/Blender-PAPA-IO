@@ -236,12 +236,19 @@ def createFaceShadingIslands(mesh, properties):
             else:
                 edgeFaceMap[key] = [poly]
 
+    loose_count = 0
     for edge in edges:
+        if edge.is_loose:
+            loose_count+=1
+            continue
         data = edgeFaceMap[edge.key]
         if edge.use_edge_sharp or len(data) != 2:
             edgeSharpMask[edge.key] = True
         else:
             edgeSharpMask[edge.key] = mesh.data.use_auto_smooth and Vector(data[0].normal).angle(Vector(data[1].normal)) >= mesh.data.auto_smooth_angle
+
+    if loose_count != 0:
+        PapaExportNotifications.getInstance().addNotification({"INFO"}, "Mesh \"" + mesh.name+  "\" has loose edges. These will be omitted.")
 
     for _ in range(len(polygons)):
         vertexShadingMap.append({})
