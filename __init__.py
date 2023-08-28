@@ -546,10 +546,11 @@ class ExportPapa(bpy.types.Operator, ExportHelper):
 
         properties = bpy.context.scene.SCENE_PAPA_EXPORT_SETTINGS
 
-        self.__updatePaths() # update data to match UI
-        self.__correctPaths() 
         shader = properties.terrainExportShader
         isFeature = properties.terrainType == "export_type_feature"
+        if isFeature:
+            self.__updatePaths() # update data to match UI
+            self.__correctPaths() 
         prop = PapaExportProperties(self.properties.filepath, self.__objectsList, 
             properties.isTerrain, isFeature, properties.markSharp, shader, ExportPapa.materialList, properties.compress,
             properties.ignoreRoot, properties.ignoreHidden, properties.ignoreNoData, properties.merge,
