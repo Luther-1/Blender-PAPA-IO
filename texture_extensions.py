@@ -2217,7 +2217,11 @@ class SaveRawTextures(bpy.types.Operator):
                 fail+=1
                 continue
             area.spaces[0].image = tex
-            bpy.ops.image.save_as({'area': area},'INVOKE_DEFAULT',copy=True,filepath = bpy.path.abspath("//")+"/"+str(texname)+".png")
+            if bpy.app.version >= (4,0,0):
+                with bpy.context.temp_override(area=area):
+                    bpy.ops.image.save_as('INVOKE_DEFAULT', copy=True, filepath = bpy.path.abspath("//")+"/"+str(texname)+".png")
+            else:
+                bpy.ops.image.save_as({'area': area}, 'INVOKE_DEFAULT', copy=True, filepath = bpy.path.abspath("//")+"/"+str(texname)+".png")
             success+=1
         
         if success != 0 or fail != 0:
@@ -2267,7 +2271,11 @@ class SaveTextures(bpy.types.Operator):
 
         for pair in data:
             area.spaces[0].image = pair[0]
-            bpy.ops.image.save_as({'area': area},'INVOKE_DEFAULT', copy=True, filepath = self.directory+"/"+n+pair[1]+".png")
+            if bpy.app.version >= (4,0,0):
+                with bpy.context.temp_override(area=area):
+                    bpy.ops.image.save_as('INVOKE_DEFAULT', copy=True, filepath = self.directory+"/"+n+pair[1]+".png")
+            else:
+                bpy.ops.image.save_as({'area': area}, 'INVOKE_DEFAULT', copy=True, filepath = self.directory+"/"+n+pair[1]+".png")
 
         area.spaces[0].image = prevImage
         area.type = prevType

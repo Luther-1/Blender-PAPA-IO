@@ -487,12 +487,13 @@ def applyTexture(blenderMaterial, diffuse, mask, material, normal, unit, propert
                 space.shading.type = "MATERIAL"
         
 def applyTextureTextured(blenderMaterial, diffuse, material, normal):
+    SPECULAR_INPUT_STRING = "Specular IOR Level" if bpy.app.version >= (4,0,0) else "Specular"
     if diffuse:
         blenderMaterial.use_nodes = True
         out = blenderMaterial.node_tree.nodes["Material Output"]
 
         bsdf = blenderMaterial.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Specular"].default_value = 0
+        bsdf.inputs[SPECULAR_INPUT_STRING].default_value = 0
         bsdf.inputs["Metallic"].default_value = 0
         bsdf.location.x = out.location.x - 570
         bsdf.location.y = out.location.y + 650
@@ -513,7 +514,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             blenderMaterial.node_tree.links.new(sepRGBmaterial.inputs[0], texmaterial.outputs["Color"]) # link inverted material to separate
             sepRGBmaterial.location.x = bsdf.location.x - 650
             sepRGBmaterial.location.y = bsdf.location.y
-            blenderMaterial.node_tree.links.new(bsdf.inputs["Specular"], sepRGBmaterial.outputs["R"]) # link red to material on bsdf
+            blenderMaterial.node_tree.links.new(bsdf.inputs[SPECULAR_INPUT_STRING], sepRGBmaterial.outputs["R"]) # link red to material on bsdf
 
             invert = blenderMaterial.node_tree.nodes.new("ShaderNodeInvert")
             blenderMaterial.node_tree.links.new(invert.inputs["Color"], texmaterial.outputs["Color"]) # invert the blenderMaterial
@@ -656,12 +657,13 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             blenderMaterial.node_tree.links.new(bsdf.inputs["Normal"], normalMap.outputs["Normal"]) # link inverted green to roughness on bsdf
 
 def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # Unit shader
+    SPECULAR_INPUT_STRING = "Specular IOR Level" if bpy.app.version >= (4,0,0) else "Specular"
     if diffuse and mask:
         blenderMaterial.use_nodes = True
         out = blenderMaterial.node_tree.nodes["Material Output"]
 
         bsdf = blenderMaterial.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Specular"].default_value = 0
+        bsdf.inputs[SPECULAR_INPUT_STRING].default_value = 0
         bsdf.inputs["Metallic"].default_value = 0.5
         bsdf.location.x = out.location.x - 570
         bsdf.location.y = out.location.y + 650
@@ -761,7 +763,7 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
             blenderMaterial.node_tree.links.new(sepRGBmaterial.inputs[0], texmaterial.outputs["Color"]) # link inverted material to separate
             sepRGBmaterial.location.x = bsdf.location.x - 650
             sepRGBmaterial.location.y = bsdf.location.y
-            blenderMaterial.node_tree.links.new(bsdf.inputs["Specular"], sepRGBmaterial.outputs["R"]) # link red to material on bsdf
+            blenderMaterial.node_tree.links.new(bsdf.inputs[SPECULAR_INPUT_STRING], sepRGBmaterial.outputs["R"]) # link red to material on bsdf
 
             invert = blenderMaterial.node_tree.nodes.new("ShaderNodeInvert")
             blenderMaterial.node_tree.links.new(invert.inputs["Color"], texmaterial.outputs["Color"]) # invert the blenderMaterial
@@ -778,7 +780,7 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
     elif diffuse: # try just diffuse if we missed all components
         blenderMaterial.use_nodes = True
         bsdf = blenderMaterial.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Specular"].default_value = 0
+        bsdf.inputs[SPECULAR_INPUT_STRING].default_value = 0
         bsdf.inputs["Metallic"].default_value = 0.5
 
         texImage = blenderMaterial.node_tree.nodes.new("ShaderNodeTexImage")
@@ -953,9 +955,8 @@ def createImageFromData(imageName, pixels, width, height, srgb, filepath, texMap
     img.pixels = pixels
     img.pack() # by packing the data, we can edit the colour space name
     if not srgb:
-        img.colorspace_settings.name = "Linear"
+        img.colorspace_settings.name = "Non-Color"
     if not useAlpha:
-        print("AAAAAAAAA")
         img.alpha_mode = "NONE"
     img[PapaExportMaterial.PAPAFILE_SOURCE_EXTENSION] = filepath
     if texMap != None:
