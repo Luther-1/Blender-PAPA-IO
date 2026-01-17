@@ -903,7 +903,6 @@ def writeMesh(mesh, properties, papaFile: PapaFile):
  
     bpy.ops.object.mode_set(mode='EDIT') # swap to edit to get the triangles and normals
     mesh.data.calc_loop_triangles()
-    mesh.data.calc_normals_split()
 
     if properties.isCSG():
         mapName = mesh.data.uv_layers[0].name # use texture UV map

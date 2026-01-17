@@ -125,7 +125,6 @@ def load_papa(properties, context):
                     normals = []
                     for i in range(vBuffer.getNumVertices()):
                         normals.append(vBuffer.getVertex(i).getNormal())
-                    blenderMesh.data.use_auto_smooth = True
                     blenderMesh.data.normals_split_custom_set_from_vertices(normals)
 
                 # create the material groups
@@ -490,7 +489,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
         out = blenderMaterial.node_tree.nodes["Material Output"]
 
         bsdf = blenderMaterial.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Specular"].default_value = 0
+        bsdf.inputs["Specular IOR Level"].default_value = 0
         bsdf.inputs["Metallic"].default_value = 0
         bsdf.location.x = out.location.x - 570
         bsdf.location.y = out.location.y + 650
@@ -507,11 +506,11 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             texmaterial.location.x = texImage.location.x - 600
             texmaterial.location.y = texImage.location.y + 300
 
-            sepRGBmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+            sepRGBmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
             blenderMaterial.node_tree.links.new(sepRGBmaterial.inputs[0], texmaterial.outputs["Color"]) # link inverted material to separate
             sepRGBmaterial.location.x = bsdf.location.x - 650
             sepRGBmaterial.location.y = bsdf.location.y
-            blenderMaterial.node_tree.links.new(bsdf.inputs["Specular"], sepRGBmaterial.outputs["R"]) # link red to material on bsdf
+            blenderMaterial.node_tree.links.new(bsdf.inputs["Specular IOR Level"], sepRGBmaterial.outputs["Red"]) # link red to material on bsdf
 
             invert = blenderMaterial.node_tree.nodes.new("ShaderNodeInvert")
             blenderMaterial.node_tree.links.new(invert.inputs["Color"], texmaterial.outputs["Color"]) # invert the blenderMaterial
@@ -519,15 +518,15 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             invert.location.x = bsdf.location.x - 650
             invert.location.y = bsdf.location.y - 150
 
-            sepRGBmaterialInv = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+            sepRGBmaterialInv = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
             blenderMaterial.node_tree.links.new(sepRGBmaterialInv.inputs[0], invert.outputs["Color"]) # link inverted material to separate
             sepRGBmaterialInv.location.x = bsdf.location.x - 400
             sepRGBmaterialInv.location.y = bsdf.location.y - 150
 
-            blenderMaterial.node_tree.links.new(bsdf.inputs["Roughness"], sepRGBmaterialInv.outputs["G"]) # link inverted green to roughness on bsdf
+            blenderMaterial.node_tree.links.new(bsdf.inputs["Roughness"], sepRGBmaterialInv.outputs["Green"]) # link inverted green to roughness on bsdf
 
             # the glow is not inverted
-            sepRGBRawmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+            sepRGBRawmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
             blenderMaterial.node_tree.links.new(sepRGBRawmaterial.inputs[0], texmaterial.outputs["Color"]) # link inverted material to separate
             sepRGBRawmaterial.location.x = bsdf.location.x - 650
             sepRGBRawmaterial.location.y = bsdf.location.y - 250
@@ -536,7 +535,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             mix = blenderMaterial.node_tree.nodes.new("ShaderNodeMixShader")
             mix.location.x = out.location.x - 225
             mix.location.y = out.location.y
-            blenderMaterial.node_tree.links.new(mix.inputs["Fac"], sepRGBRawmaterial.outputs["B"]) # link the blue channel into emission strength
+            blenderMaterial.node_tree.links.new(mix.inputs["Fac"], sepRGBRawmaterial.outputs["Blue"]) # link the blue channel into emission strength
 
             # add emission
             emission = blenderMaterial.node_tree.nodes.new("ShaderNodeEmission")
@@ -565,7 +564,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             # https://blender.stackexchange.com/questions/105032/trying-to-convert-a-dxt5nm-normal-map-for-use-in-my-scene
 
             # add searate node
-            sepRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+            sepRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
             blenderMaterial.node_tree.links.new(sepRGB.inputs[0], texNormal.outputs["Color"]) # link normal to separate
             sepRGB.location.x = bsdf.location.x - 1750
             sepRGB.location.y = bsdf.location.y - 750
@@ -573,7 +572,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             # (1 - green)
             invGreen = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
             invGreen.operation = "SUBTRACT"
-            blenderMaterial.node_tree.links.new(invGreen.inputs[1], sepRGB.outputs["G"])
+            blenderMaterial.node_tree.links.new(invGreen.inputs[1], sepRGB.outputs["Green"])
             invGreen.inputs[0].default_value=1
             invGreen.location.x = bsdf.location.x - 1100
             invGreen.location.y = bsdf.location.y - 750
@@ -582,7 +581,7 @@ def applyTextureTextured(blenderMaterial, diffuse, material, normal):
             # Green (0,1) -> (-1,1)
             multiplyAddGreen = blenderMaterial.node_tree.nodes.new("ShaderNodeMath")
             multiplyAddGreen.operation = "MULTIPLY_ADD"
-            blenderMaterial.node_tree.links.new(multiplyAddGreen.inputs[0], sepRGB.outputs["G"])
+            blenderMaterial.node_tree.links.new(multiplyAddGreen.inputs[0], sepRGB.outputs["Green"])
             multiplyAddGreen.inputs[1].default_value=2
             multiplyAddGreen.inputs[2].default_value=-1
             multiplyAddGreen.location.x = bsdf.location.x - 1550
@@ -659,7 +658,7 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         out = blenderMaterial.node_tree.nodes["Material Output"]
 
         bsdf = blenderMaterial.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Specular"].default_value = 0
+        bsdf.inputs["Specular IOR Level"].default_value = 0
         bsdf.inputs["Metallic"].default_value = 0.5
         bsdf.location.x = out.location.x - 570
         bsdf.location.y = out.location.y + 650
@@ -693,7 +692,7 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         texMask.location.y = bsdf.location.y - 1000
 
         # add searate node
-        sepRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+        sepRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
         blenderMaterial.node_tree.links.new(sepRGB.inputs[0], texMask.outputs["Color"]) # link Mask to separate
         sepRGB.location.x = mix.location.x - 1450
         sepRGB.location.y = mix.location.y - 300
@@ -702,7 +701,7 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         blenderMaterial.node_tree.links.new(mix.inputs[0], sepRGB.outputs[2]) 
 
         # recombine red and green to act as a factor
-        combineRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeCombineRGB")
+        combineRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeCombineColor")
         blenderMaterial.node_tree.links.new(combineRGB.inputs[0], sepRGB.outputs[0])
         blenderMaterial.node_tree.links.new(combineRGB.inputs[1], sepRGB.outputs[1])
         combineRGB.location.x = mix.location.x - 1150
@@ -722,11 +721,12 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         colourRampGreen.location.y = colourRampRed.location.y - 250
         
         # combine the remapped colours
-        mixRGBLighten = blenderMaterial.node_tree.nodes.new("ShaderNodeMixRGB")
+        mixRGBLighten = blenderMaterial.node_tree.nodes.new("ShaderNodeMix")
+        mixRGBLighten.data_type = 'RGBA'
         mixRGBLighten.blend_type = "ADD"
-        mixRGBLighten.inputs["Fac"].default_value = 1
-        blenderMaterial.node_tree.links.new(mixRGBLighten.inputs["Color1"], colourRampRed.outputs["Color"]) # apply our initial colours
-        blenderMaterial.node_tree.links.new(mixRGBLighten.inputs["Color2"], colourRampGreen.outputs["Color"]) # apply our mapped mask values
+        mixRGBLighten.inputs["Factor"].default_value = 1
+        blenderMaterial.node_tree.links.new(mixRGBLighten.inputs["A"], colourRampRed.outputs["Color"]) # apply our initial colours
+        blenderMaterial.node_tree.links.new(mixRGBLighten.inputs["B"], colourRampGreen.outputs["Color"]) # apply our mapped mask values
         mixRGBLighten.location.x = mix.location.x - 800
         mixRGBLighten.location.y = mix.location.y - 350
 
@@ -739,11 +739,12 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         colourRamp.location.y = bsdf.location.y - 500
 
         # add mix RGB node
-        mixRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeMixRGB")
+        mixRGB = blenderMaterial.node_tree.nodes.new("ShaderNodeMix")
+        mixRGB.data_type = 'RGBA'
         mixRGB.blend_type = "OVERLAY"
-        blenderMaterial.node_tree.links.new(mixRGB.inputs["Color1"], texImage.outputs["Color"]) # apply our initial colours
-        blenderMaterial.node_tree.links.new(mixRGB.inputs["Color2"], mixRGBLighten.outputs["Color"]) # apply our mapped mask values
-        blenderMaterial.node_tree.links.new(mixRGB.inputs["Fac"], colourRamp.outputs["Color"]) # set the factor to be the color ramp
+        blenderMaterial.node_tree.links.new(mixRGB.inputs["A"], texImage.outputs["Color"]) # apply our initial colours
+        blenderMaterial.node_tree.links.new(mixRGB.inputs["B"], mixRGBLighten.outputs["Color"]) # apply our mapped mask values
+        blenderMaterial.node_tree.links.new(mixRGB.inputs["Factor"], colourRamp.outputs["Color"]) # set the factor to be the color ramp
         mixRGB.location.x = bsdf.location.x - 250
         mixRGB.location.y = bsdf.location.y - 350
 
@@ -755,11 +756,11 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
             texmaterial.location.x = texImage.location.x
             texmaterial.location.y = texImage.location.y + 300
 
-            sepRGBmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+            sepRGBmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
             blenderMaterial.node_tree.links.new(sepRGBmaterial.inputs[0], texmaterial.outputs["Color"]) # link inverted material to separate
             sepRGBmaterial.location.x = bsdf.location.x - 650
             sepRGBmaterial.location.y = bsdf.location.y
-            blenderMaterial.node_tree.links.new(bsdf.inputs["Specular"], sepRGBmaterial.outputs["R"]) # link red to material on bsdf
+            blenderMaterial.node_tree.links.new(bsdf.inputs["Specular IOR Level"], sepRGBmaterial.outputs["Red"]) # link red to material on bsdf
 
             invert = blenderMaterial.node_tree.nodes.new("ShaderNodeInvert")
             blenderMaterial.node_tree.links.new(invert.inputs["Color"], texmaterial.outputs["Color"]) # invert the blenderMaterial
@@ -767,16 +768,16 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
             invert.location.x = bsdf.location.x - 650
             invert.location.y = bsdf.location.y - 150
 
-            sepRGBmaterialInv = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateRGB")
+            sepRGBmaterialInv = blenderMaterial.node_tree.nodes.new("ShaderNodeSeparateColor")
             blenderMaterial.node_tree.links.new(sepRGBmaterialInv.inputs[0], invert.outputs["Color"]) # link inverted material to separate
             sepRGBmaterialInv.location.x = bsdf.location.x - 400
             sepRGBmaterialInv.location.y = bsdf.location.y - 150
 
-            blenderMaterial.node_tree.links.new(bsdf.inputs["Roughness"], sepRGBmaterialInv.outputs["G"]) # link inverted green to roughness on bsdf
+            blenderMaterial.node_tree.links.new(bsdf.inputs["Roughness"], sepRGBmaterialInv.outputs["Green"]) # link inverted green to roughness on bsdf
     elif diffuse: # try just diffuse if we missed all components
         blenderMaterial.use_nodes = True
         bsdf = blenderMaterial.node_tree.nodes["Principled BSDF"]
-        bsdf.inputs["Specular"].default_value = 0
+        bsdf.inputs["Specular IOR Level"].default_value = 0
         bsdf.inputs["Metallic"].default_value = 0.5
 
         texImage = blenderMaterial.node_tree.nodes.new("ShaderNodeTexImage")
@@ -951,7 +952,7 @@ def createImageFromData(imageName, pixels, width, height, srgb, filepath, texMap
     img.pixels = pixels
     img.pack() # by packing the data, we can edit the colour space name
     if not srgb:
-        img.colorspace_settings.name = "Linear"
+        img.colorspace_settings.name = "Non-Color"
     if not useAlpha:
         print("AAAAAAAAA")
         img.alpha_mode = "NONE"

@@ -25,7 +25,7 @@ bl_info = {
     "name": "Planetary Annihilation PAPA Format",
     "author": "Raevn and Luther",
     "version": (1, 1, 3),
-    "blender": (3, 0, 1),
+    "blender": (5, 0, 1),
     "location": "File > Import/Export",
     "description": "Imports/Exports PAPA meshes, uvs, bones, materials, groups, textures, and animations",
     "warning": "",
@@ -34,13 +34,13 @@ bl_info = {
     "category": "Import-Export"}
 
 if "bpy" in locals():
-    import imp
+    import importlib
     if ("import_papa") in locals():
-        imp.reload(import_papa)
+        importlib.reload(import_papa)
     if ("export_papa") in locals():
-        imp.reload(export_papa)
+        importlib.reload(export_papa)
     if("papafile" in locals()):
-        imp.reload(papafile)
+        importlib.reload(papafile)
 import bpy
 from copy import copy
 from bpy.props import *
@@ -110,7 +110,7 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         from . import import_papa
 
-        pref = context.preferences.addons[__name__].preferences
+        pref = context.preferences.addons[__package__].preferences
 
         colours = self.__getColours(pref)
 
@@ -158,7 +158,7 @@ class ImportPapa(bpy.types.Operator, ImportHelper):
         row = l.row()
         row.prop(self,"importNormals")
 
-        pref = context.preferences.addons[__name__].preferences
+        pref = context.preferences.addons[__package__].preferences
         row = l.row()
         row.prop(pref,"colourScheme", expand=True)
 
