@@ -743,13 +743,13 @@ def applyTextureSolid(blenderMaterial, diffuse, mask, material, properties): # U
         mixRGB.data_type = 'RGBA'
         mixRGB.blend_type = "OVERLAY"
         blenderMaterial.node_tree.links.new(mixRGB.inputs["A"], texImage.outputs["Color"]) # apply our initial colours
-        blenderMaterial.node_tree.links.new(mixRGB.inputs["B"], mixRGBLighten.outputs["Color"]) # apply our mapped mask values
+        blenderMaterial.node_tree.links.new(mixRGB.inputs["B"], mixRGBLighten.outputs["Result"]) # apply our mapped mask values (Result for ShaderNodeMix)
         blenderMaterial.node_tree.links.new(mixRGB.inputs["Factor"], colourRamp.outputs["Color"]) # set the factor to be the color ramp
         mixRGB.location.x = bsdf.location.x - 250
         mixRGB.location.y = bsdf.location.y - 350
 
-        blenderMaterial.node_tree.links.new(bsdf.inputs["Base Color"], mixRGB.outputs["Color"]) # link the mixed colour into the BSDF shader
-        blenderMaterial.node_tree.links.new(emission.inputs["Color"], mixRGB.outputs["Color"]) # link the mixed colour into the emission shader
+        blenderMaterial.node_tree.links.new(bsdf.inputs["Base Color"], mixRGB.outputs["Result"]) # link the mixed colour into the BSDF shader
+        blenderMaterial.node_tree.links.new(emission.inputs["Color"], mixRGB.outputs["Result"]) # link the mixed colour into the emission shader
         if material: # add material components
             texmaterial = blenderMaterial.node_tree.nodes.new("ShaderNodeTexImage")
             texmaterial.image = material
